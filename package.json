@@ -1,0 +1,16 @@
+{
+  "name": "tradelab-practice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Учебный симулятор трейдинга с виртуальным балансом и журналом сделок",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "check": "node --check server.mjs && node --check public/app.mjs && node --check public/domain.mjs",
+    "test": "node --test"
+  }
+}
