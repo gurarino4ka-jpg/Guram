@@ -1,0 +1,11 @@
+{
+  "mode": "data-only",
+  "symbols": ["BTC", "ETH", "SOL", "ZEC"],
+  "resolutions": ["60", "30", "15"],
+  "pollSeconds": 60,
+  "countback": 300,
+  "timeoutSeconds": 10,
+  "maxQuoteAgeSeconds": 120,
+  "maxClosedLagPeriods": 1,
+  "dataDir": "data/market-monitor"
+}

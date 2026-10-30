@@ -18,3 +18,13 @@ jobs:
       - run: npm ci --offline --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - run: npm test
+  monitor-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --offline --ignore-scripts --no-audit --no-fund
+      - run: npm run check
+      - run: node --test tests/monitor-core.test.mjs tests/monitor-provider.test.mjs tests/monitor-store.test.mjs tests/monitor-collector.test.mjs
