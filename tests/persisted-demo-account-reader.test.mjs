@@ -81,3 +81,24 @@ test('persisted reader rejects overlapping reads while checkpoint save is pendin
   releaseSave();
   assert.deepEqual(await first,payload);
 });
+
+test('restart restores durable checkpoint and rejects replay before accepting newer snapshot',async()=>{
+  let persisted=null;
+  const store={
+    load:async()=>persisted,
+    save:async value=>{persisted={...value};},
+  };
+  const makeReader=snapshot=>createPersistedDemoAccountReader({
+    store,transport:async()=>response(snapshot),
+    accountPath:'/account/demo',now:()=>now,
+  });
+  const first=await makeReader(payload);
+  assert.deepEqual(await first(),payload);
+  assert.deepEqual(persisted,{accountId:payload.accountId,asOf:payload.asOf});
+  const restarted=await makeReader(payload);
+  await assert.rejects(restarted(),ReadOnlyTransportError);
+  const newer={...payload,asOf:'2026-11-11T05:59:31.000Z'};
+  const next=await makeReader(newer);
+  assert.deepEqual(await next(),newer);
+  assert.deepEqual(persisted,{accountId:newer.accountId,asOf:newer.asOf});
+});
