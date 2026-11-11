@@ -135,3 +135,10 @@ test('rejects spoofed response URL and silently followed redirects',async()=>{
   })});
   assert.equal((await read('/account')).status,200);
 });
+
+test('rejects all non-200 success statuses including partial and empty bodies',async()=>{
+  for(const status of [201,202,203,204,205,206,207,208,226]) {
+    const read=createReadOnlyTransport({origin,allowedPaths:['/account'],fetchImpl:async()=>({status})});
+    await assert.rejects(read('/account'),ReadOnlyTransportError,String(status));
+  }
+});
