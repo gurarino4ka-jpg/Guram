@@ -183,7 +183,7 @@ export async function createCandleArchive(dataDir) {
               fail('invalid_journal', 'Journal changed during replay.');
             }
             await load(data);
-            journalIdentity = {dev:opened.dev,ino:opened.ino};
+            journalIdentity = {dev:opened.dev,ino:opened.ino,size:opened.size};
           } finally {
             await reader.close();
           }
@@ -268,16 +268,21 @@ export async function createCandleArchive(dataDir) {
         const pathStat = await fs.lstat(journal);
         if (!openedStat.isFile() || !pathStat.isFile() ||
             openedStat.dev !== pathStat.dev || openedStat.ino !== pathStat.ino ||
-            (journalIdentity && (openedStat.dev !== journalIdentity.dev || openedStat.ino !== journalIdentity.ino))) {
+            (journalIdentity && (openedStat.dev !== journalIdentity.dev || openedStat.ino !== journalIdentity.ino ||
+              openedStat.size !== journalIdentity.size))) {
           fail('invalid_journal', 'Archive journal identity changed before append.');
         }
         await handle.writeFile(line, 'utf8');
         await handle.sync();
+        const writtenStat = await handle.stat();
+        if (writtenStat.size !== openedStat.size + Buffer.byteLength(line, 'utf8')) {
+          fail('invalid_journal', 'Archive journal size changed unexpectedly during append.');
+        }
         await handle.close();
         handle = null;
         // Persist directory entry too (important when the journal was created).
         await syncDirectory(root);
-        journalIdentity = {dev:openedStat.dev,ino:openedStat.ino};
+        journalIdentity = {dev:openedStat.dev,ino:openedStat.ino,size:writtenStat.size};
         applyBatch(entries);
         batches.add(payload.id);
         return counts;
