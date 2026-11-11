@@ -116,3 +116,29 @@ test('provider exceptions never leak secret text through reader errors',async()=
     });
   }
 });
+
+test('cancels the underlying body stream after timeout',async()=>{
+  let cancellations=0;
+  const response={status:200,headers:{get:key=>key==='content-type'?'application/json':null},
+    body:new ReadableStream({
+      start(controller){controller.enqueue(new TextEncoder().encode('{"accountId":'));},
+      pull(){return new Promise(()=>{});},
+      cancel(){cancellations++;}
+    })};
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account/demo'],fetchImpl:async()=>response});
+  const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now,bodyTimeoutMs:100});
+  await assert.rejects(read(),ReadOnlyTransportError);
+  assert.equal(cancellations,1);
+});
+test('cancels the underlying body stream when byte limit is exceeded',async()=>{
+  let cancellations=0;
+  const response={status:200,headers:{get:key=>key==='content-type'?'application/json':null},
+    body:new ReadableStream({
+      start(controller){controller.enqueue(new Uint8Array(513));},
+      cancel(){cancellations++;}
+    })};
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account/demo'],fetchImpl:async()=>response});
+  const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now,maxBytes:512});
+  await assert.rejects(read(),ReadOnlyTransportError);
+  assert.equal(cancellations,1);
+});
