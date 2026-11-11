@@ -5,7 +5,7 @@ import { createReadOnlyTransport,ReadOnlyTransportError } from '../monitor/reado
 const origin='https://demo.example.invalid';
 test('read-only transport allows only same-origin GET and forbids redirects',async()=>{
   const calls=[];
-  const transport=createReadOnlyTransport({origin,fetchImpl:async(url,options)=>{
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async(url,options)=>{
     calls.push({url,options});
     return {status:200};
   }});
@@ -23,17 +23,19 @@ test('read-only transport allows only same-origin GET and forbids redirects',asy
     await assert.rejects(transport(path),ReadOnlyTransportError);
   }
   assert.equal(calls.length,1,'rejected calls must not touch network');
+  await assert.rejects(transport('/orders'),ReadOnlyTransportError);
+  assert.equal(calls.length,1);
 });
 test('read-only transport rejects unsafe origins and unexpected redirects',async()=>{
   for(const unsafe of ['http://demo.example.invalid','https://user:pass@demo.example.invalid','https://demo.example.invalid/path','https://demo.example.invalid?x=1','https://demo.example.invalid#frag']) {
-    assert.throws(()=>createReadOnlyTransport({origin:unsafe}),ReadOnlyTransportError);
+    assert.throws(()=>createReadOnlyTransport({origin:unsafe,allowedPaths:['/account']}),ReadOnlyTransportError);
   }
-  const transport=createReadOnlyTransport({origin,fetchImpl:async()=>({status:302})});
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>({status:302})});
   await assert.rejects(transport('/account'),ReadOnlyTransportError);
 });
 test('read-only transport does not retry failed requests or follow redirects',async()=>{
   let calls=0;
-  const transport=createReadOnlyTransport({origin,fetchImpl:async()=>{
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>{
     calls++;
     throw new Error('network unavailable');
   }});
@@ -43,7 +45,7 @@ test('read-only transport does not retry failed requests or follow redirects',as
 
 test('sanitizes secrets in network errors and rejects HTTP failure statuses',async()=>{
   const secret='token-never-leak';
-  const failed=createReadOnlyTransport({origin,fetchImpl:async()=>{
+  const failed=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>{
     throw new Error('Authorization '+secret);
   }});
   await assert.rejects(failed('/account'),error=>{
@@ -52,13 +54,13 @@ test('sanitizes secrets in network errors and rejects HTTP failure statuses',asy
     return true;
   });
   for(const [status,fragment] of [[401,'authorization'],[403,'authorization'],[429,'rate limit'],[500,'unsuccessful'],[302,'Redirect']]) {
-    const transport=createReadOnlyTransport({origin,fetchImpl:async()=>({status})});
+    const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>({status})});
     await assert.rejects(transport('/account'),error=>error instanceof ReadOnlyTransportError&&error.message.includes(fragment));
   }
 });
 test('aborted request fails closed without retry',async()=>{
   let calls=0;
-  const transport=createReadOnlyTransport({origin,timeoutMs:100,fetchImpl:async(_url,{signal})=>{
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],timeoutMs:100,fetchImpl:async(_url,{signal})=>{
     calls++;
     return new Promise((_resolve,reject)=>{
       signal.addEventListener('abort',()=>reject(new Error('private token in abort')), {once:true});
@@ -70,7 +72,7 @@ test('aborted request fails closed without retry',async()=>{
 
 test('rejects encoded path traversal and separators before any request',async()=>{
   let calls=0;
-  const read=createReadOnlyTransport({origin,fetchImpl:async()=>{
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>{
     calls++;
     return {status:200};
   }});
