@@ -323,3 +323,30 @@ test('simultaneous archive open attempts allow exactly one writer',async()=>{
     await loser.close();
   });
 });
+
+test('former owner cannot append after another archive takes over a replaced lock',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    // Simulate unsafe external deletion: never do this during normal operation.
+    await fs.unlink(lock);
+    const second=await createCandleArchive(dir);
+    await second.open();
+    const corrected={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await second.appendObservation({market,candles:[corrected]});
+    const before=await fs.readFile(journal);
+    await assert.rejects(first.appendObservation({market,candles:[corrected]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    assert.deepEqual(await fs.readFile(journal),before);
+    await assert.rejects(first.close(),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    await second.close();
+    const replay=await createCandleArchive(dir);
+    await replay.open();
+    assert.equal(replay.getRevisions(market,candle.openTimeMs).length,2);
+    await replay.close();
+  });
+});
