@@ -156,3 +156,24 @@ test('external abort settles even when fetch ignores its abort signal',async()=>
   controller.abort();
   await assert.rejects(pending,ReadOnlyTransportError);
 });
+
+test('pre-aborted signal never dispatches an HTTP request',async()=>{
+  const controller=new AbortController();
+  controller.abort();
+  let calls=0;
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account'],fetchImpl:async()=>{
+    calls++;
+    return {status:200};
+  }});
+  await assert.rejects(read('/account',{signal:controller.signal}),ReadOnlyTransportError);
+  assert.equal(calls,0);
+});
+test('abort immediately after dispatch rejects even if response resolves afterward',async()=>{
+  const controller=new AbortController();
+  let resolveFetch;
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account'],fetchImpl:()=>new Promise(resolve=>{resolveFetch=resolve;})});
+  const pending=read('/account',{signal:controller.signal});
+  controller.abort();
+  resolveFetch({status:200});
+  await assert.rejects(pending,ReadOnlyTransportError);
+});
