@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp,readFile,writeFile,rm,stat } from 'node:fs/promises';
+import { mkdtemp,readFile,writeFile,rm,stat,mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDemoAccountCheckpointStore } from '../monitor/demo-account-checkpoint-store.mjs';
@@ -46,5 +46,23 @@ test('rejects sequential checkpoint replay, rollback and account switching',asyn
     }
     await store.save({...checkpoint,asOf:'2026-11-11T05:59:31.000Z'});
     assert.equal((await store.load()).asOf,'2026-11-11T05:59:31.000Z');
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
+
+test('cross-instance checkpoint lock rejects concurrent or stale lock holders',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'demo-checkpoint-'));
+  try {
+    const filePath=join(dir,'checkpoint.json');
+    const first=createDemoAccountCheckpointStore({filePath});
+    const second=createDemoAccountCheckpointStore({filePath});
+    await mkdir(filePath+'.lock');
+    await assert.rejects(first.save(checkpoint),ReadOnlyTransportError);
+    await assert.rejects(second.save(checkpoint),ReadOnlyTransportError);
+    assert.equal(await first.load(),null);
+    await rm(filePath+'.lock',{recursive:true});
+    await first.save(checkpoint);
+    await assert.rejects(second.save(checkpoint),ReadOnlyTransportError);
+    await second.save({...checkpoint,asOf:'2026-11-11T05:59:31.000Z'});
+    assert.equal((await first.load()).asOf,'2026-11-11T05:59:31.000Z');
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
