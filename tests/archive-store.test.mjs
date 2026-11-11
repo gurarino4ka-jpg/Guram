@@ -419,3 +419,23 @@ test('journal symlink replacement fails closed without modifying its target',asy
     await archive.close();
   });
 });
+
+test('replacing existing journal with another regular file fails closed',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const saved=journal+'.saved';
+    await fs.rename(journal,saved);
+    const original=await fs.readFile(saved);
+    await fs.writeFile(journal,original);
+    const before=await fs.readFile(journal);
+    const correction={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await assert.rejects(archive.appendObservation({market,candles:[correction]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    assert.deepEqual(await fs.readFile(journal),before);
+    assert.deepEqual(await fs.readFile(saved),original);
+    await archive.close();
+  });
+});
