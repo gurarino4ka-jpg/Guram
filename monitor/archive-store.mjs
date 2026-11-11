@@ -18,6 +18,12 @@ function fail(code, message, cause) {
   throw new ArchiveStoreError(code, message, cause);
 }
 
+async function syncDirectory(directory) {
+  if (process.platform === 'win32') return;
+  const handle = await fs.open(directory, 'r');
+  try { await handle.sync(); } finally { await handle.close(); }
+}
+
 function sha(text) {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
