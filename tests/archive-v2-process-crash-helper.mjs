@@ -18,7 +18,10 @@ if(self&&root&&fault) {
   const lock=await acquireV2WriterLock(root);
   try {
     await commitPreparedGeneration(root,lock,2,{
-      faultAt:fault,
+      faultAt:fault.startsWith('kill-')?null:fault,
+      onCheckpoint:async name=>{
+        if(fault==='kill-'+name) process.kill(process.pid,'SIGKILL');
+      },
     });
   } catch(error) {
     if(String(error.message).includes('Injected fault:')) process.exit(77);
