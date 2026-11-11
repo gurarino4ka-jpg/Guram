@@ -64,7 +64,10 @@ export async function readInitialManifest(root) {
       throw new SegmentManifestError('Invalid manifest framing');
     }
     const manifest=JSON.parse(data.slice(0,-1));
-    createSegmentManifest(manifest.segments);
+    if (!manifest || typeof manifest!=='object' || !Array.isArray(manifest.segments) ||
+        createSegmentManifest(manifest.segments).checksum!==manifest.checksum) {
+      throw new SegmentManifestError('Manifest checksum mismatch');
+    }
     return manifest;
   } finally { await handle.close(); }
 }
