@@ -1,4 +1,4 @@
-import { readFile,rename,unlink,open,mkdir,rmdir } from 'node:fs/promises';
+import { readFile,rename,unlink,open,mkdir,rmdir,lstat } from 'node:fs/promises';
 import { dirname,basename,resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ReadOnlyTransportError } from './readonly-transport.mjs';
@@ -23,9 +23,19 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
   // Never expire or steal this lock by age: a paused process may still own it.
   // After a crash, an operator must verify all writers stopped before removing it.
   const lockPath=target+'.lock';
+  async function rejectUnsafeTarget() {
+    try {
+      const info=await lstat(target);
+      if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1) throw new ReadOnlyTransportError('Unsafe checkpoint file');
+    } catch(error) {
+      if(error?.code==='ENOENT') return;
+      throw new ReadOnlyTransportError('Unsafe checkpoint file');
+    }
+  }
   let saving=false;
   const store={
     async load() {
+      await rejectUnsafeTarget();
       let content;
       try { content=await readFile(target,{encoding:'utf8',flag:'r'}); }
       catch(error) {
@@ -45,6 +55,7 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
       try { await mkdir(lockPath,{mode:0o700}); locked=true; }
       catch { throw new ReadOnlyTransportError('Checkpoint lock unavailable'); }
       const previous=await store.load();
+      await rejectUnsafeTarget();
       if(previous&&(previous.accountId!==checkpoint.accountId||Date.parse(checkpoint.asOf)<=Date.parse(previous.asOf))) {
         throw new ReadOnlyTransportError('Checkpoint regression forbidden');
       }
@@ -56,6 +67,7 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
         await handle.sync();
         await handle.close();
         handle=null;
+        await rejectUnsafeTarget();
         await rename(temp,target);
       } catch {
         if(handle) { try { await handle.close(); } catch {} }
