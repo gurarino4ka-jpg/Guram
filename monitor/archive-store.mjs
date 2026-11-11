@@ -3,7 +3,7 @@ import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import {
   validateMarketIdentity, validateArchiveCandle, createCandleKey,
-  createCandleHash, createRecordHash,
+  createCandleHash, createRecordHash, createStoredCandleHash,
 } from './archive-schema.mjs';
 
 export class ArchiveStoreError extends Error {
@@ -99,7 +99,8 @@ export async function createCandleArchive(dataDir) {
               !Number.isSafeInteger(entry.knownAtMs) || entry.knownAtMs < 0 ||
               !/^[a-f0-9]{64}$/.test(entry.contentHash) ||
               !/^[a-f0-9]{64}$/.test(entry.recordHash) ||
-              entry.recordHash !== createRecordHash(entry)) throw new Error('Invalid revision.');
+              entry.recordHash !== createRecordHash(entry) ||
+              entry.contentHash !== createStoredCandleHash(entry)) throw new Error('Invalid revision.');
           const previous = pending.get(entry.candleKey) ?? state.get(entry.candleKey) ?? [];
           const last = previous.at(-1);
           if (entry.revision !== (last?.revision ?? 0) + 1 ||
