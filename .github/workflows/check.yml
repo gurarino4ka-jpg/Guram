@@ -39,7 +39,7 @@ jobs:
           node-version: 24
       - run: npm ci --offline --ignore-scripts --no-audit --no-fund
       - name: Measure synthetic archive append and replay
-        run: node scripts/benchmark-candle-archive-suite.mjs --output=archive-benchmark.json
+        run: node scripts/benchmark-candle-archive-suite.mjs --repeats=3 --output=archive-benchmark.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
