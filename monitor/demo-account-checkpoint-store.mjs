@@ -20,7 +20,8 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
     throw new ReadOnlyTransportError('Invalid checkpoint file path');
   }
   const target=resolve(filePath);
-  return Object.freeze({
+  let saving=false;
+  const store={
     async load() {
       let content;
       try { content=await readFile(target,{encoding:'utf8',flag:'r'}); }
@@ -33,7 +34,14 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
       catch { throw new ReadOnlyTransportError('Invalid checkpoint file'); }
     },
     async save(value) {
+      if(saving) throw new ReadOnlyTransportError('Concurrent checkpoint save forbidden');
+      saving=true;
+      try {
       const checkpoint=validateCheckpoint(value);
+      const previous=await store.load();
+      if(previous&&(previous.accountId!==checkpoint.accountId||Date.parse(checkpoint.asOf)<=Date.parse(previous.asOf))) {
+        throw new ReadOnlyTransportError('Checkpoint regression forbidden');
+      }
       const temp=resolve(dirname(target),'.'+basename(target)+'.'+randomUUID()+'.tmp');
       let handle;
       try {
@@ -48,6 +56,8 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
         try { await unlink(temp); } catch {}
         throw new ReadOnlyTransportError('Checkpoint write failed');
       }
+      } finally { saving=false; }
     },
-  });
+  };
+  return Object.freeze(store);
 }
