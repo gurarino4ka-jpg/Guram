@@ -4,7 +4,7 @@ export class ReadOnlyTransportError extends Error {
   constructor(message) { super(message); this.name='ReadOnlyTransportError'; }
 }
 
-export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeoutMs=5000}={}) {
+export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeoutMs=5000,allowedPaths}={}) {
   if(typeof origin!=='string') throw new ReadOnlyTransportError('Explicit HTTPS origin required');
   let allowed;
   try { allowed=new URL(origin); } catch { throw new ReadOnlyTransportError('Invalid origin'); }
@@ -12,6 +12,15 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
      allowed.pathname!=='/'||allowed.search||allowed.hash||
      allowed.origin!==origin.replace(/\/$/,'')) {
     throw new ReadOnlyTransportError('Origin must be an exact HTTPS origin');
+  }
+  if(!Array.isArray(allowedPaths)||allowedPaths.length===0||
+     allowedPaths.some(path=>typeof path!=='string'||!/^\\/[a-zA-Z0-9/_-]+$/.test(path)||
+       path.startsWith('//')||path.split('/').some(part=>part==='.'||part==='..'))) {
+    throw new ReadOnlyTransportError('Explicit safe path allowlist required');
+  }
+  const allowedPathSet=new Set(allowedPaths);
+  if(allowedPathSet.size!==allowedPaths.length) {
+    throw new ReadOnlyTransportError('Duplicate allowlist path');
   }
   if(typeof fetchImpl!=='function') throw new ReadOnlyTransportError('Invalid fetch implementation');
   if(!Number.isInteger(timeoutMs)||timeoutMs<100||timeoutMs>30000) {
@@ -28,6 +37,9 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
          return decoded==='.'||decoded==='..'||decoded.includes('/')||decoded.includes('\\');
        })) {
       throw new ReadOnlyTransportError('Invalid request path');
+    }
+    if(!allowedPathSet.has(path)) {
+      throw new ReadOnlyTransportError('Request path not allowlisted');
     }
     let url;
     try { url=new URL(path,allowed); } catch { throw new ReadOnlyTransportError('Invalid request path'); }
