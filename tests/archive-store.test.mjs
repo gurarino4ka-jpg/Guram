@@ -195,3 +195,17 @@ test('missing archive lock refuses further writes',async()=>{
       e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
   });
 });
+
+test('same archive instance can reopen and replay without duplicate batches',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    await archive.close();
+    await archive.open();
+    assert.equal(archive.getRevisions(market,candle.openTimeMs).length,1);
+    assert.deepEqual(await archive.appendObservation({market,candles:[candle]}),
+      {newCandles:0,revisions:0,unchanged:1});
+    await archive.close();
+  });
+});
