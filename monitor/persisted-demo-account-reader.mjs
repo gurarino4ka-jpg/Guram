@@ -12,13 +12,15 @@ export async function createPersistedDemoAccountReader({store,...readerOptions}=
   catch { throw new ReadOnlyTransportError('Checkpoint restore failed'); }
   const read=createDemoAccountReader({...readerOptions,checkpoint});
   let busy=false;
+  let poisoned=false;
   return async function readPersistedDemoAccount({signal}={}) {
+    if(poisoned) throw new ReadOnlyTransportError('Persisted reader requires restart after checkpoint failure');
     if(busy) throw new ReadOnlyTransportError('Concurrent persisted read forbidden');
     busy=true;
     try {
       const snapshot=await read({signal});
       try { await store.save(read.getCheckpoint()); }
-      catch { throw new ReadOnlyTransportError('Checkpoint persistence failed'); }
+      catch { poisoned=true; throw new ReadOnlyTransportError('Checkpoint persistence failed'); }
       return snapshot;
     } finally { busy=false; }
   };
