@@ -61,8 +61,8 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
         throw new ReadOnlyTransportError('Checkpoint write failed');
       }
       } finally {
-        if(locked) { try { await rmdir(lockPath); } catch { throw new ReadOnlyTransportError('Checkpoint lock cleanup failed'); } }
         saving=false;
+        if(locked) { try { await rmdir(lockPath); } catch { throw new ReadOnlyTransportError('Checkpoint lock cleanup failed'); } }
       }
     },
   };
