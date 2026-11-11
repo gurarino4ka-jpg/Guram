@@ -90,7 +90,7 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
         throw new ReadOnlyTransportError('Read-only authorization rejected');
       }
       if(response.status===429) throw new ReadOnlyTransportError('Read-only rate limit exceeded');
-      if(response.status<200||response.status>=300) {
+      if(response.status!==200) {
         throw new ReadOnlyTransportError('Read-only HTTP request unsuccessful');
       }
       return response;
