@@ -24,6 +24,7 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
       throw new ReadOnlyTransportError('Account response must be JSON');
     }
     let raw;
+    let observedBytes=0;
     try {
       // Limit streaming bytes, not just Content-Length or post-buffer length.
       if(!response.body||typeof response.body.getReader!=='function') {
@@ -38,6 +39,7 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
           if(done) break;
           if(!(value instanceof Uint8Array)) throw new Error('Invalid stream chunk');
           size+=value.byteLength;
+          observedBytes=size;
           if(size>maxBytes) throw new ReadOnlyTransportError('Account response too large');
           chunks.push(value);
         }
@@ -48,6 +50,9 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
       raw=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
     } catch {
       throw new ReadOnlyTransportError('Invalid account response body');
+    }
+    if(declaredLength!==null&&declaredLength!==undefined&&Number(declaredLength)!==observedBytes) {
+      throw new ReadOnlyTransportError('Incomplete account response');
     }
     let payload;
     try { payload=JSON.parse(raw); }
