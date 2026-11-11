@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp,readFile,writeFile,rm,stat,mkdir,utimes } from 'node:fs/promises';
+import { mkdtemp,readFile,writeFile,rm,stat,mkdir,utimes,symlink,link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDemoAccountCheckpointStore } from '../monitor/demo-account-checkpoint-store.mjs';
@@ -79,5 +79,23 @@ test('never steals an old checkpoint lock even if its mtime is stale',async()=>{
     await assert.rejects(store.save(checkpoint),ReadOnlyTransportError);
     assert.equal((await stat(lockPath)).isDirectory(),true);
     assert.equal(await store.load(),null);
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
+
+test('checkpoint store refuses symlink targets and does not overwrite linked files',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'demo-checkpoint-'));
+  try {
+    const actual=join(dir,'actual.json');
+    const target=join(dir,'checkpoint.json');
+    await writeFile(actual,JSON.stringify(checkpoint));
+    await symlink(actual,target,'file');
+    const store=createDemoAccountCheckpointStore({filePath:target});
+    await assert.rejects(store.load(),ReadOnlyTransportError);
+    await assert.rejects(store.save({...checkpoint,asOf:'2026-11-11T05:59:31.000Z'}),ReadOnlyTransportError);
+    assert.deepEqual(JSON.parse(await readFile(actual,'utf8')),checkpoint);
+    await rm(target);
+    await link(actual,target);
+    await assert.rejects(store.load(),ReadOnlyTransportError);
+    await assert.rejects(store.save({...checkpoint,asOf:'2026-11-11T05:59:31.000Z'}),ReadOnlyTransportError);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
