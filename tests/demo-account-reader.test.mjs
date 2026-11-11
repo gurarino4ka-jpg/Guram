@@ -42,7 +42,7 @@ test('rejects live account, malformed JSON, oversized body and invalid MIME',asy
 });
 test('reader configuration rejects unsafe account paths',()=>{
   const transport=async()=>fakeResponse(payload);
-  for(const accountPath of ['https://elsewhere.example','//evil','/../account','/account#token','/account\\live','']) {
+  for(const accountPath of ['https://elsewhere.example','//evil','/../account','/account#token','/account\\live','/account?scope=demo','/account%2Fdemo','/account/./demo','/account/../demo','']) {
     assert.throws(()=>createDemoAccountReader({transport,accountPath}),ReadOnlyTransportError);
   }
 });
@@ -91,4 +91,11 @@ test('abort during streaming body rejects without a snapshot',async()=>{
   const pending=read({signal:controller.signal});
   controller.abort();
   await assert.rejects(pending,ReadOnlyTransportError);
+});
+
+test('reader configuration rejects query strings and encoded path tricks',()=>{
+  const transport=async()=>fakeResponse(payload);
+  for(const accountPath of ['/account?scope=demo','/account%2fdemo','/account%2e%2e','/account/./demo','/account/../demo']) {
+    assert.throws(()=>createDemoAccountReader({transport,accountPath}),ReadOnlyTransportError);
+  }
 });
