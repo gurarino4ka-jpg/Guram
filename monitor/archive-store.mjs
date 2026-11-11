@@ -262,7 +262,7 @@ export async function createCandleArchive(dataDir) {
           handle = await fs.open(journal, 'ax', 0o600);
         } else {
           if (!journalStat) fail('invalid_journal', 'Pinned journal disappeared.');
-          handle = await fs.open(journal, fsConstants.O_WRONLY | fsConstants.O_APPEND);
+          handle = await fs.open(journal, fsConstants.O_RDWR | fsConstants.O_APPEND);
         }
         const openedStat = await handle.stat();
         const pathStat = await fs.lstat(journal);
@@ -274,7 +274,7 @@ export async function createCandleArchive(dataDir) {
         }
         // Detect same-size in-place tampering since the last successful replay/append.
         // This is O(journal size) per append; benchmark before production use.
-        const priorData = await fs.readFile(journal, 'utf8');
+        const priorData = await handle.readFile('utf8');
         const preWriteStat = await handle.stat();
         if (preWriteStat.size !== openedStat.size ||
             (journalIdentity && sha(priorData) !== journalIdentity.hash)) {
