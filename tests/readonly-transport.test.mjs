@@ -120,3 +120,18 @@ test('rejects credentials, cookies, custom headers and method overrides before n
   await read('/account',{headers:{Accept:'application/json'}});
   assert.equal(calls,1);
 });
+
+test('rejects spoofed response URL and silently followed redirects',async()=>{
+  for(const response of [
+    {status:200,redirected:true,url:origin+'/account'},
+    {status:200,redirected:false,url:'https://evil.example.invalid/account'},
+    {status:200,redirected:false,url:origin+'/orders'},
+  ]) {
+    const read=createReadOnlyTransport({origin,allowedPaths:['/account'],fetchImpl:async()=>response});
+    await assert.rejects(read('/account'),ReadOnlyTransportError);
+  }
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account'],fetchImpl:async()=>({
+    status:200,redirected:false,url:origin+'/account',
+  })});
+  assert.equal((await read('/account')).status,200);
+});
