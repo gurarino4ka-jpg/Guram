@@ -28,3 +28,9 @@ test('rejects live account, invalid balances, ambiguous identities and timestamp
   assert.throws(()=>parseDemoAccountSnapshot(null,{now}),ReadOnlyTransportError);
   assert.throws(()=>parseDemoAccountSnapshot([],{now}),ReadOnlyTransportError);
 });
+
+test('rejects invalid, fractional and unsafe clock values',()=>{
+  for(const clock of [NaN,Infinity,-Infinity,-1,0.5,'2026-11-11',null,Number.MAX_SAFE_INTEGER+1]) {
+    assert.throws(()=>parseDemoAccountSnapshot(valid(),{now:clock}),ReadOnlyTransportError,String(clock));
+  }
+});
