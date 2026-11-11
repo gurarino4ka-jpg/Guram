@@ -303,3 +303,23 @@ test('lock disappearance during operation refuses further writes and does not re
     await assert.rejects(fs.access(lock),e=>e.code==='ENOENT');
   });
 });
+
+test('simultaneous archive open attempts allow exactly one writer',async()=>{
+  await fixture(async dir=>{
+    const a=await createCandleArchive(dir);
+    const b=await createCandleArchive(dir);
+    const outcomes=await Promise.allSettled([a.open(),b.open()]);
+    const winners=outcomes.filter(x=>x.status==='fulfilled');
+    const losers=outcomes.filter(x=>x.status==='rejected');
+    assert.equal(winners.length,1);
+    assert.equal(losers.length,1);
+    assert.equal(losers[0].reason.code,'locked');
+    const winner=outcomes[0].status==='fulfilled'?a:b;
+    const loser=winner===a?b:a;
+    await winner.appendObservation({market,candles:[candle]});
+    await winner.close();
+    await loser.open();
+    assert.equal(loser.getRevisions(market,candle.openTimeMs).length,1);
+    await loser.close();
+  });
+});
