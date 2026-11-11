@@ -169,3 +169,29 @@ test('sequential revisions survive multiple committed batches and PIT replay',as
     await restarted.close();
   });
 });
+
+test('replaced lock token prevents writes and does not delete replacement',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    const original=JSON.parse(await fs.readFile(lock,'utf8'));
+    const replacement={...original,token:'foreign-owner-token'};
+    await fs.writeFile(lock,JSON.stringify(replacement)+'\n');
+    await assert.rejects(archive.appendObservation({market,candles:[candle]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    await assert.rejects(archive.close(),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    assert.equal(JSON.parse(await fs.readFile(lock,'utf8')).token,'foreign-owner-token');
+  });
+});
+test('missing archive lock refuses further writes',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    await fs.unlink(lock);
+    await assert.rejects(archive.appendObservation({market,candles:[candle]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+  });
+});
