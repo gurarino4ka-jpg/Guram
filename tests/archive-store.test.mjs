@@ -439,3 +439,29 @@ test('replacing existing journal with another regular file fails closed',async()
     await archive.close();
   });
 });
+
+test('append filesystem failure poisons writer until close and clean replay',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const saved=journal+'.saved';
+    await fs.rename(journal,saved);
+    await fs.mkdir(journal);
+    const correction={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await assert.rejects(archive.appendObservation({market,candles:[correction]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    await assert.rejects(archive.appendObservation({market,candles:[correction]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    assert.throws(()=>archive.getRevisions(market,candle.openTimeMs),
+      e=>e instanceof ArchiveStoreError&&e.code==='not_ready');
+    await fs.rmdir(journal);
+    await fs.rename(saved,journal);
+    await archive.close();
+    const reopened=await createCandleArchive(dir);
+    await reopened.open();
+    assert.equal(reopened.getRevisions(market,candle.openTimeMs).length,1);
+    await reopened.close();
+  });
+});
