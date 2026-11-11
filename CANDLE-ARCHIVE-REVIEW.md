@@ -104,3 +104,19 @@ Source: successful GitHub Actions run https://github.com/gurarino4ka-jpg/Guram/a
 | 10,000 | 599, 564, 513 | 564 / 599 | 147, 143, 141 | 143 / 147 |
 
 The reported p95 uses the nearest-rank method: for only three samples it equals the maximum, so it is **not** a robust tail-latency estimate. Heap-used observations are not peak RSS; repeated tests are still small and runner-dependent. The NO-GO deployment decision remains unchanged.
+
+## CA-35/36 integrity-versus-performance gate (2026-11-11)
+
+Sources: successful CI runs [CA-35](https://github.com/gurarino4ka-jpg/Guram/actions/runs/42967354091) and [CA-36](https://github.com/gurarino4ka-jpg/Guram/actions/runs/42967617062). Both include Linux Node 22/24, Windows monitor tests and the synthetic benchmark job.
+
+CA-35 introduced a full-journal SHA-256 comparison before every append to detect same-length external edits. CA-36 reads through the pinned append descriptor, avoiding a second path resolution. These checks **do not make writes atomic against an actively malicious external writer**. They also make each append scan the existing journal, so cumulative work is quadratic in the number of fixed-size batches.
+
+| Synthetic candles | CA-29 append median (ms) | CA-35 append median (ms) | CA-35 / baseline |
+| ---: | ---: | ---: | ---: |
+| 1,000 | 69 | 52 | 0.75x |
+| 5,000 | 261 | 392 | 1.50x |
+| 10,000 | 564 | 1,252 | 2.22x |
+
+CA-36 CI also passed, but its pinned-descriptor full read does not remove this asymptotic cost. These are three-trial CI-runner measurements, **not** controlled same-machine A/B tests. No speedup or slowdown percentage should be treated as an SLO.
+
+**Decision: NO-GO for production or 100k+ ingestion with the current per-append full scan.** Do not remove the integrity check without a documented replacement and a failure-mode test. Evaluate (a) an OS-enforced single-writer ownership model with independent periodic integrity verification, (b) segmenting journals with immutable verified segments and bounded active-segment checks, or (c) authenticated external checkpoints. Each option requires explicit threat-model and durability review. Retain the current conservative implementation in the isolated feature branch pending that decision.
