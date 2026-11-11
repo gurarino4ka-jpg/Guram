@@ -1,0 +1,57 @@
+import { ReadOnlyTransportError } from './readonly-transport.mjs';
+import { parseDemoAccountSnapshot } from './demo-account-validation.mjs';
+
+// Provider-neutral composition only. Do not wire to an actual account until
+// the official demo API contract and read-only credentials are reviewed.
+export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(),maxBytes=16384}={}) {
+  if(typeof transport!=='function') throw new ReadOnlyTransportError('Read-only transport required');
+  if(typeof accountPath!=='string'||!/^\/[a-zA-Z0-9/_?=&.%-]+$/.test(accountPath)||
+     accountPath.startsWith('//')||accountPath.includes('..')) {
+    throw new ReadOnlyTransportError('Explicit account path required');
+  }
+  if(typeof now!=='function'||!Number.isInteger(maxBytes)||maxBytes<256||maxBytes>1048576) {
+    throw new ReadOnlyTransportError('Invalid reader configuration');
+  }
+  return async function readDemoAccount({signal}={}) {
+    const response=await transport(accountPath,{method:'GET',signal});
+    const declaredLength=response.headers?.get?.('content-length');
+    if(declaredLength!==null&&declaredLength!==undefined) {
+      if(!/^\d+$/.test(declaredLength)||Number(declaredLength)>maxBytes) {
+        throw new ReadOnlyTransportError('Account response too large');
+      }
+    }
+    if(response.headers?.get?.('content-type')?.split(';')[0]?.trim().toLowerCase()!=='application/json') {
+      throw new ReadOnlyTransportError('Account response must be JSON');
+    }
+    let raw;
+    try {
+      // Limit streaming bytes, not just Content-Length or post-buffer length.
+      if(!response.body||typeof response.body.getReader!=='function') {
+        throw new Error('Streaming response required');
+      }
+      const reader=response.body.getReader();
+      const chunks=[];
+      let size=0;
+      try {
+        while(true) {
+          const {done,value}=await reader.read();
+          if(done) break;
+          if(!(value instanceof Uint8Array)) throw new Error('Invalid stream chunk');
+          size+=value.byteLength;
+          if(size>maxBytes) throw new ReadOnlyTransportError('Account response too large');
+          chunks.push(value);
+        }
+      } finally { reader.releaseLock(); }
+      const bytes=new Uint8Array(size);
+      let offset=0;
+      for(const chunk of chunks) { bytes.set(chunk,offset);offset+=chunk.byteLength; }
+      raw=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+    } catch {
+      throw new ReadOnlyTransportError('Invalid account response body');
+    }
+    let payload;
+    try { payload=JSON.parse(raw); }
+    catch { throw new ReadOnlyTransportError('Invalid account JSON'); }
+    return parseDemoAccountSnapshot(payload,{now:now()});
+  };
+}
