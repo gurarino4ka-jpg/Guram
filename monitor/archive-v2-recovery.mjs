@@ -27,7 +27,7 @@ export async function inspectV2Recovery(root) {
   ]);
   // Never allocate proportional to an untrusted HEAD generation (up to 10^12).
   const orphanManifests=manifestNames.filter(name=>{
-    if(!/^\\d{12}\\.json$/.test(name)) return true;
+    if(!/^\d{12}\.json$/.test(name)) return true;
     const number=Number(name.slice(0,12));
     return !Number.isSafeInteger(number)||number<1||number>head.generation;
   }).sort();
