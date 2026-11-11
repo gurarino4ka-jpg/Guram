@@ -42,3 +42,20 @@ test('restored checkpoint prevents replay through persisted reader',async()=>{
   });
   await assert.rejects(read(),ReadOnlyTransportError);
 });
+
+test('checkpoint save failure permanently disables reader until a new instance is created',async()=>{
+  let calls=0;
+  let saves=0;
+  const store={load:async()=>null,save:async()=>{saves++;throw new Error('disk full');}};
+  const read=await createPersistedDemoAccountReader({
+    store,transport:async()=>{calls++;return response(payload);},
+    accountPath:'/account/demo',now:()=>now,
+  });
+  await assert.rejects(read(),ReadOnlyTransportError);
+  await assert.rejects(read(),error=>{
+    assert.match(error.message,/requires restart/);
+    return true;
+  });
+  assert.equal(calls,1);
+  assert.equal(saves,1);
+});
