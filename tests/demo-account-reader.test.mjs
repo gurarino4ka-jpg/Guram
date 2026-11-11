@@ -46,3 +46,31 @@ test('reader configuration rejects unsafe account paths',()=>{
     assert.throws(()=>createDemoAccountReader({transport,accountPath}),ReadOnlyTransportError);
   }
 });
+
+test('rejects truncated Content-Length, broken stream and invalid UTF-8',async()=>{
+  const text=JSON.stringify(payload);
+  const bytes=new TextEncoder().encode(text);
+  const cases=[
+    {status:200,headers:{get:key=>key==='content-type'?'application/json':key==='content-length'?String(bytes.length+1):null},
+      body:new ReadableStream({start(controller){controller.enqueue(bytes);controller.close();}})},
+    {status:200,headers:{get:key=>key==='content-type'?'application/json':null},
+      body:new ReadableStream({start(controller){controller.enqueue(bytes.subarray(0,10));controller.error(new Error('secret provider error'));}})},
+    {status:200,headers:{get:key=>key==='content-type'?'application/json':null},
+      body:new ReadableStream({start(controller){controller.enqueue(new Uint8Array([0xff,0xfe]));controller.close();}})},
+  ];
+  for(const response of cases) {
+    const transport=createReadOnlyTransport({origin,fetchImpl:async()=>response});
+    const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
+    await assert.rejects(read(),ReadOnlyTransportError);
+  }
+});
+test('pre-aborted read rejects without producing an accepted account snapshot',async()=>{
+  const controller=new AbortController();
+  controller.abort();
+  const transport=createReadOnlyTransport({origin,fetchImpl:async(_url,{signal})=>{
+    if(signal.aborted) throw new Error('secret from provider');
+    return fakeResponse(payload);
+  }});
+  const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
+  await assert.rejects(read({signal:controller.signal}),ReadOnlyTransportError);
+});
