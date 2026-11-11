@@ -31,3 +31,13 @@ Status: experimental, opt-in, branch-only. Do not merge or use as authoritative 
 - Confirm market identity against provider response, not inferred naming.
 - Add bounded query and end-to-end collector/CLI tests using fixtures.
 - Independent code review; merge only after explicit approval.
+
+## Manual recovery after a crash (no automatic lock removal)
+1. Stop the monitor and ensure no other collector or archive process is writing to the same `dataDir`. A PID alone is not proof of process identity, especially across hosts and containers.
+2. Back up the **entire** `archive/v1` directory, including `archive.lock` and `observations.jsonl`, before making changes.
+3. Check the lock's PID, token, creation time and host/container context. Confirm that the owner is no longer alive and no other writer has acquired the archive. Do not remove a lock merely because it looks old.
+4. Inspect the journal for incomplete or invalid lines. The reader deliberately refuses to open corrupt journals and **does not** truncate or repair them. Preserve original bytes and investigate before any offline repair.
+5. Only after verifying that all writers are stopped, remove the stale lock **manually** and restart in a controlled environment. If the journal is corrupt, keep the archive offline until a separately reviewed recovery process is available.
+6. Verify replay, revision counts and the latest point-in-time candle before resuming collection. Never use an unverified archive for historical strategy evaluation.
+
+The current lock is advisory and not a cross-host distributed lease. A replacement between ownership check and write remains a race; use one writer and an isolated local filesystem.
