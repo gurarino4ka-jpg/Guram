@@ -159,3 +159,13 @@ test('rejects noncanonical and unsafe Content-Length values',async()=>{
     await assert.rejects(read(),ReadOnlyTransportError,length);
   }
 });
+
+test('rejects non-JSON and misleading Content-Type parameters',async()=>{
+  for(const contentType of ['text/html','application/jsonp','application/json; charset=iso-8859-1',
+    'application/json; boundary=evil','application/json; charset=utf-8; boundary=evil',
+    'application/json, text/html','application/json; charset=utf-16','application/json; charset=utf-8\r\nX-Evil: yes']) {
+    const transport=async()=>({status:200,headers:{get:key=>key==='content-type'?contentType:null}});
+    const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
+    await assert.rejects(read(),ReadOnlyTransportError,contentType);
+  }
+});
