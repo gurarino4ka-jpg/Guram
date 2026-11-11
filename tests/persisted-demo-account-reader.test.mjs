@@ -1,0 +1,44 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createPersistedDemoAccountReader } from '../monitor/persisted-demo-account-reader.mjs';
+import { ReadOnlyTransportError } from '../monitor/readonly-transport.mjs';
+
+const now=Date.parse('2026-11-11T06:00:00.000Z');
+const payload={accountId:'demo_123',environment:'demo',currency:'USD',balance:1000,asOf:'2026-11-11T05:59:30.000Z'};
+function response(snapshot) {
+  return {status:200,headers:{get:key=>key==='content-type'?'application/json':null},
+    body:new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode(JSON.stringify(snapshot)));controller.close();}})};
+}
+test('persisted reader saves checkpoint before exposing account snapshot',async()=>{
+  let saved=null;
+  const store={load:async()=>null,save:async value=>{saved=value;}};
+  const read=await createPersistedDemoAccountReader({store,transport:async()=>response(payload),
+    accountPath:'/account/demo',now:()=>now});
+  assert.equal(saved,null);
+  const result=await read();
+  assert.deepEqual(result,payload);
+  assert.deepEqual(saved,{accountId:payload.accountId,asOf:payload.asOf});
+});
+test('persisted reader fails closed when restore or save fails',async()=>{
+  await assert.rejects(createPersistedDemoAccountReader({
+    store:{load:async()=>{throw new Error('secret');},save:async()=>{}},
+    transport:async()=>response(payload),accountPath:'/account/demo',now:()=>now,
+  }),ReadOnlyTransportError);
+  const read=await createPersistedDemoAccountReader({
+    store:{load:async()=>null,save:async()=>{throw new Error('secret');}},
+    transport:async()=>response(payload),accountPath:'/account/demo',now:()=>now,
+  });
+  await assert.rejects(read(),error=>{
+    assert.equal(error instanceof ReadOnlyTransportError,true);
+    assert.equal(error.message.includes('secret'),false);
+    return true;
+  });
+});
+test('restored checkpoint prevents replay through persisted reader',async()=>{
+  const checkpoint={accountId:payload.accountId,asOf:payload.asOf};
+  const read=await createPersistedDemoAccountReader({
+    store:{load:async()=>checkpoint,save:async()=>{}},
+    transport:async()=>response(payload),accountPath:'/account/demo',now:()=>now,
+  });
+  await assert.rejects(read(),ReadOnlyTransportError);
+});
