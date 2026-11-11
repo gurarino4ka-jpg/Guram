@@ -392,3 +392,30 @@ test('after lost ownership close is idempotent and a stale writer cannot reopen 
     await first.close();
   });
 });
+
+test('journal symlink replacement fails closed without modifying its target',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const moved=journal+'.saved';
+    await fs.rename(journal,moved);
+    try {
+      await fs.symlink(moved,journal);
+    } catch (error) {
+      if (error.code==='EPERM' || error.code==='EACCES') {
+        await fs.rename(moved,journal);
+        await archive.close();
+        return;
+      }
+      throw error;
+    }
+    const before=await fs.readFile(moved);
+    const correction={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await assert.rejects(archive.appendObservation({market,candles:[correction]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    assert.deepEqual(await fs.readFile(moved),before);
+    await archive.close();
+  });
+});
