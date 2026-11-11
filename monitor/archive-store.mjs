@@ -234,7 +234,17 @@ export async function createCandleArchive(dataDir) {
         if (journalStat && (!journalStat.isFile() || journalStat.isSymbolicLink())) {
           fail('invalid_journal', 'Archive journal must be a regular file.');
         }
-        handle = await fs.open(journal, 'a', 0o600);
+        // The first journal must be created exclusively: an unexpected file
+        // installed after open() must never be appended without replay.
+        // Once pinned, open without O_CREAT so deletion cannot silently
+        // recreate an empty journal before the identity check.
+        if (journalIdentity === null) {
+          if (journalStat) fail('invalid_journal', 'Journal appeared after archive open.');
+          handle = await fs.open(journal, 'ax', 0o600);
+        } else {
+          if (!journalStat) fail('invalid_journal', 'Pinned journal disappeared.');
+          handle = await fs.open(journal, fsConstants.O_WRONLY | fsConstants.O_APPEND);
+        }
         const openedStat = await handle.stat();
         const pathStat = await fs.lstat(journal);
         if (!openedStat.isFile() || !pathStat.isFile() ||
