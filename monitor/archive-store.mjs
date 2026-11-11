@@ -143,10 +143,21 @@ export async function createCandleArchive(dataDir) {
         poisoned = false;
         await load();
       } catch (error) {
+        const ownedToken = lockToken;
         await lockHandle.close().catch(()=>{});
         lockHandle = null;
         lockToken = null;
-        await fs.unlink(lock).catch(()=>{});
+        // Do not delete a replacement lock installed while journal replay failed.
+        try {
+          const current = JSON.parse(await fs.readFile(lock, 'utf8'));
+          if (current.token === ownedToken && current.pid === process.pid) {
+            await fs.unlink(lock);
+          }
+        } catch (cleanupError) {
+          if (cleanupError.code !== 'ENOENT') {
+            fail('lock_cleanup_failed', 'Archive failed to open and lock cleanup was not verified; inspect lock manually.', cleanupError);
+          }
+        }
         throw error;
       }
     }),
