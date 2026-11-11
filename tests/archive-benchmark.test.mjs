@@ -19,3 +19,14 @@ test('synthetic archive benchmark produces validated metrics for a small run',as
   }
   assert.ok(result.journalBytes>0);
 });
+
+test('synthetic benchmark suite reports independent runs',async()=>{
+  const suite=new URL('../scripts/benchmark-candle-archive-suite.mjs',import.meta.url);
+  const {stdout}=await execFileAsync(process.execPath,[suite.pathname,'3','7'],{
+    timeout:30_000,maxBuffer:1024*1024,
+  });
+  const report=JSON.parse(stdout);
+  assert.equal(report.kind,'synthetic-candle-archive-benchmark');
+  assert.deepEqual(report.measurements.map(m=>m.syntheticCandles),[3,7]);
+  assert.ok(report.measurements.every(m=>m.journalBytes>0));
+});
