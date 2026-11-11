@@ -57,19 +57,22 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
        typeof value!=='string'||value!=='application/json')) {
       throw new ReadOnlyTransportError('Request headers not allowlisted');
     }
+    if(signal?.aborted) throw new ReadOnlyTransportError('Read-only request aborted');
     const controller=new AbortController();
     let rejectInterrupted;
     const interrupted=new Promise((_resolve,reject)=>{ rejectInterrupted=reject; });
     const abort=()=>{
+      if(controller.signal.aborted) return;
       controller.abort();
       rejectInterrupted(new ReadOnlyTransportError('Read-only request aborted'));
     };
     const timer=setTimeout(abort,timeoutMs);
+    signal?.addEventListener('abort',abort,{once:true});
     if(signal?.aborted) abort();
-    else signal?.addEventListener('abort',abort,{once:true});
     try {
       let response;
       try {
+        if(controller.signal.aborted) throw new ReadOnlyTransportError('Read-only request aborted');
         response=await Promise.race([fetchImpl(url.href,{
           method:'GET',headers:{...headers},redirect:'manual',
           credentials:'omit',signal:controller.signal,
