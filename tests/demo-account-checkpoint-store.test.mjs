@@ -99,3 +99,17 @@ test('checkpoint store refuses symlink targets and does not overwrite linked fil
     await assert.rejects(store.save({...checkpoint,asOf:'2026-11-11T05:59:31.000Z'}),ReadOnlyTransportError);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+test('rejects oversized checkpoint before decoding and malformed UTF-8',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'demo-checkpoint-'));
+  try {
+    const filePath=join(dir,'checkpoint.json');
+    const store=createDemoAccountCheckpointStore({filePath});
+    await writeFile(filePath,Buffer.alloc(1024*1024,0x20));
+    await assert.rejects(store.load(),ReadOnlyTransportError);
+    await writeFile(filePath,Buffer.from([0xff,0xfe,0xfd]));
+    await assert.rejects(store.load(),ReadOnlyTransportError);
+    await writeFile(filePath,JSON.stringify(checkpoint));
+    assert.deepEqual(await store.load(),checkpoint);
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
