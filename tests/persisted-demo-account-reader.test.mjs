@@ -59,3 +59,25 @@ test('checkpoint save failure permanently disables reader until a new instance i
   assert.equal(calls,1);
   assert.equal(saves,1);
 });
+
+test('persisted reader rejects overlapping reads while checkpoint save is pending',async()=>{
+  let releaseSave;
+  let enteredSave;
+  const saving=new Promise(resolve=>{enteredSave=resolve;});
+  const waitForRelease=new Promise(resolve=>{releaseSave=resolve;});
+  let transportCalls=0;
+  const read=await createPersistedDemoAccountReader({
+    store:{load:async()=>null,save:async()=>{enteredSave();await waitForRelease;}},
+    transport:async()=>{transportCalls++;return response(payload);},
+    accountPath:'/account/demo',now:()=>now,
+  });
+  const first=read();
+  await saving;
+  await assert.rejects(read(),error=>{
+    assert.match(error.message,/Concurrent persisted read/);
+    return true;
+  });
+  assert.equal(transportCalls,1);
+  releaseSave();
+  assert.deepEqual(await first,payload);
+});
