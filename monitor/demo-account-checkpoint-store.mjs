@@ -1,3 +1,4 @@
+import { constants as fsConstants } from 'node:fs';
 import { readFile,rename,unlink,open,mkdir,rmdir,lstat } from 'node:fs/promises';
 import { dirname,basename,resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -39,7 +40,8 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
       let content;
       let handle;
       try {
-        handle=await open(target,'r');
+        // O_NOFOLLOW prevents final-component symlink swaps between lstat and open on POSIX.
+        handle=await open(target,fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW??0));
         const info=await handle.stat();
         if(!info.isFile()||info.nlink!==1||info.size>4096) throw new Error('Unsafe checkpoint size');
         const buffer=Buffer.alloc(4097);
