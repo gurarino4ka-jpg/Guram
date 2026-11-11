@@ -1,5 +1,8 @@
 # UpScale demo readiness: read-only integration gate (CA-59)
 
+> **АРХИВ — ПЛАН API ОТМЕНЁН.** Пользователь 11.11.2026 подтвердил, что для UpScale не используется API. Актуальная архитектура — [UPSCALE-BROWSER-DEMO-PLAN.md](UPSCALE-BROWSER-DEMO-PLAN.md): действия через пользовательский интерфейс UpScale в облачном браузере ChatGPT Work. Ни один из API-шагов ниже не является текущим поручением к реализации. Блокирующий статус NO-GO относится к реальному API-доступу, не запрещая подготовку браузерной демосессии.
+
+
 **Status: NOT READY — NO-GO.** This is a checklist, not a claim that UpScale's private API, account, or order routes have been inspected. No account credentials or live requests are required or authorized.
 
 ## Official UpScale documentation confirmed (November 11, 2026)
