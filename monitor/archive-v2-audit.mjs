@@ -11,8 +11,12 @@ export async function verifyPublishedChain(root) {
   const base=path.resolve(root);
   const head=await readHead(base);
   const names=await fs.readdir(path.join(base,'manifests'));
-  const expected=Array.from({length:head.generation},(_,i)=>generationFile(i+1));
-  if(names.length!==expected.length||names.slice().sort().some((name,i)=>name!==expected[i])) {
+  // Reject implausible HEAD before allocating a generation-sized array.
+  if(names.length!==head.generation) {
+    throw new SegmentManifestError('Missing or unexpected manifest generation');
+  }
+  const expected=Array.from({length:names.length},(_,i)=>generationFile(i+1));
+  if(names.slice().sort().some((name,i)=>name!==expected[i])) {
     throw new SegmentManifestError('Missing or unexpected manifest generation');
   }
   let previousHash=null;
