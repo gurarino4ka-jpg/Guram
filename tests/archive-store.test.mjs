@@ -465,3 +465,24 @@ test('append filesystem failure poisons writer until close and clean replay',asy
     await reopened.close();
   });
 });
+
+test('newline-terminated but invalid interrupted batch is rejected without modifying committed prefix',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    await first.close();
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const committed=await fs.readFile(journal);
+    // A crash may leave a newline but only a fragment of the next batch.
+    await fs.appendFile(journal,'{"version":1,"id":"torn"}\n');
+    const damaged=await fs.readFile(journal);
+    const second=await createCandleArchive(dir);
+    await assert.rejects(second.open(),
+      e=>e instanceof ArchiveStoreError&&e.code==='corrupt_journal');
+    assert.deepEqual(await fs.readFile(journal),damaged);
+    assert.deepEqual(damaged.subarray(0,committed.length),committed);
+    await assert.rejects(fs.access(path.join(dir,'archive','v1','archive.lock')),
+      e=>e.code==='ENOENT');
+  });
+});
