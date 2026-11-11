@@ -14,15 +14,22 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
     throw new ReadOnlyTransportError('Invalid reader configuration');
   }
   return async function readDemoAccount({signal}={}) {
-    const response=await transport(accountPath,{method:'GET',signal});
-    const declaredLength=response.headers?.get?.('content-length');
-    if(declaredLength!==null&&declaredLength!==undefined) {
-      if(!/^\d+$/.test(declaredLength)||Number(declaredLength)>maxBytes) {
-        throw new ReadOnlyTransportError('Account response too large');
+    let response;
+    try { response=await transport(accountPath,{method:'GET',signal}); }
+    catch { throw new ReadOnlyTransportError('Account request failed'); }
+    let declaredLength;
+    try {
+      declaredLength=response?.headers?.get?.('content-length');
+      if(declaredLength!==null&&declaredLength!==undefined) {
+        if(typeof declaredLength!=='string'||!/^\d+$/.test(declaredLength)||Number(declaredLength)>maxBytes) {
+          throw new ReadOnlyTransportError('Account response too large');
+        }
       }
-    }
-    if(response.headers?.get?.('content-type')?.split(';')[0]?.trim().toLowerCase()!=='application/json') {
-      throw new ReadOnlyTransportError('Account response must be JSON');
+      if(response?.headers?.get?.('content-type')?.split(';')[0]?.trim().toLowerCase()!=='application/json') {
+        throw new ReadOnlyTransportError('Account response must be JSON');
+      }
+    } catch {
+      throw new ReadOnlyTransportError('Invalid account response headers');
     }
     let raw;
     let observedBytes=0;
@@ -74,6 +81,7 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
     let payload;
     try { payload=JSON.parse(raw); }
     catch { throw new ReadOnlyTransportError('Invalid account JSON'); }
-    return parseDemoAccountSnapshot(payload,{now:now()});
+    try { return parseDemoAccountSnapshot(payload,{now:now()}); }
+    catch { throw new ReadOnlyTransportError('Invalid demo account snapshot'); }
   };
 }
