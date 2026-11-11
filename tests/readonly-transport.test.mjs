@@ -67,3 +67,19 @@ test('aborted request fails closed without retry',async()=>{
   await assert.rejects(transport('/account'),/Read-only request aborted/);
   assert.equal(calls,1);
 });
+
+test('rejects encoded path traversal and separators before any request',async()=>{
+  let calls=0;
+  const read=createReadOnlyTransport({origin,fetchImpl:async()=>{
+    calls++;
+    return {status:200};
+  }});
+  for(const path of [
+    '/account/../private','/account/%2e%2e/private','/%2E/private',
+    '/account/%2fprivate','/account/%5cprivate','/account/%00',
+    '/account/%2e./private','/account/%ZZ','/account\nprivate',
+  ]) {
+    await assert.rejects(read(path),ReadOnlyTransportError,path);
+  }
+  assert.equal(calls,0);
+});
