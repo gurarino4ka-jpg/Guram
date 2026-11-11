@@ -209,3 +209,15 @@ test('same archive instance can reopen and replay without duplicate batches',asy
     await archive.close();
   });
 });
+
+test('stale-looking lock is not automatically removed or overwritten',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    const stale=JSON.stringify({pid:99999999,token:'prior-process',createdAt:'2020-01-01T00:00:00.000Z'})+'\n';
+    await fs.writeFile(lock,stale);
+    await assert.rejects(archive.open(),
+      e=>e instanceof ArchiveStoreError&&e.code==='locked');
+    assert.equal(await fs.readFile(lock,'utf8'),stale);
+  });
+});
