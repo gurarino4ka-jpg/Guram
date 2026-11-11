@@ -14,7 +14,8 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
     throw new ReadOnlyTransportError('Origin must be an exact HTTPS origin');
   }
   if(!Array.isArray(allowedPaths)||allowedPaths.length===0||
-     allowedPaths.some(path=>typeof path!=='string'||!/^\\/[a-zA-Z0-9/_-]+$/.test(path)||
+     allowedPaths.some(path=>typeof path!=='string'||!path.startsWith('/')||
+       !/^[a-zA-Z0-9/_-]+$/.test(path.slice(1))||
        path.startsWith('//')||path.split('/').some(part=>part==='.'||part==='..'))) {
     throw new ReadOnlyTransportError('Explicit safe path allowlist required');
   }
