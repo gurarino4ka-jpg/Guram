@@ -18,6 +18,27 @@ jobs:
       - run: npm ci --offline --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - run: npm test
+  demo-readonly-gate:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: 22
+          - os: ubuntu-latest
+            node: 24
+          - os: windows-latest
+            node: 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --offline --ignore-scripts --no-audit --no-fund
+      - name: One continuous synthetic demo security gate
+        run: npm run demo:verify
   monitor-windows:
     runs-on: windows-latest
     steps:
