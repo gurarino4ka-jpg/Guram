@@ -5,14 +5,14 @@ import { createReadOnlyTransport,ReadOnlyTransportError } from '../monitor/reado
 const origin='https://demo.example.invalid';
 test('read-only transport allows only same-origin GET and forbids redirects',async()=>{
   const calls=[];
-  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async(url,options)=>{
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async(url,options)=>{
     calls.push({url,options});
     return {status:200};
   }});
-  const response=await transport('/account?scope=demo');
+  const response=await transport('/account');
   assert.equal(response.status,200);
   assert.equal(calls.length,1);
-  assert.equal(calls[0].url,origin+'/account?scope=demo');
+  assert.equal(calls[0].url,origin+'/account');
   assert.equal(calls[0].options.method,'GET');
   assert.equal(calls[0].options.redirect,'manual');
   assert.equal(calls[0].options.credentials,'omit');
@@ -30,12 +30,12 @@ test('read-only transport rejects unsafe origins and unexpected redirects',async
   for(const unsafe of ['http://demo.example.invalid','https://user:pass@demo.example.invalid','https://demo.example.invalid/path','https://demo.example.invalid?x=1','https://demo.example.invalid#frag']) {
     assert.throws(()=>createReadOnlyTransport({origin:unsafe,allowedPaths:['/account']}),ReadOnlyTransportError);
   }
-  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>({status:302})});
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async()=>({status:302})});
   await assert.rejects(transport('/account'),ReadOnlyTransportError);
 });
 test('read-only transport does not retry failed requests or follow redirects',async()=>{
   let calls=0;
-  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>{
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async()=>{
     calls++;
     throw new Error('network unavailable');
   }});
@@ -45,7 +45,7 @@ test('read-only transport does not retry failed requests or follow redirects',as
 
 test('sanitizes secrets in network errors and rejects HTTP failure statuses',async()=>{
   const secret='token-never-leak';
-  const failed=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>{
+  const failed=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async()=>{
     throw new Error('Authorization '+secret);
   }});
   await assert.rejects(failed('/account'),error=>{
@@ -54,13 +54,13 @@ test('sanitizes secrets in network errors and rejects HTTP failure statuses',asy
     return true;
   });
   for(const [status,fragment] of [[401,'authorization'],[403,'authorization'],[429,'rate limit'],[500,'unsuccessful'],[302,'Redirect']]) {
-    const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>({status})});
+    const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async()=>({status})});
     await assert.rejects(transport('/account'),error=>error instanceof ReadOnlyTransportError&&error.message.includes(fragment));
   }
 });
 test('aborted request fails closed without retry',async()=>{
   let calls=0;
-  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],timeoutMs:100,fetchImpl:async(_url,{signal})=>{
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],timeoutMs:100,fetchImpl:async(_url,{signal})=>{
     calls++;
     return new Promise((_resolve,reject)=>{
       signal.addEventListener('abort',()=>reject(new Error('private token in abort')), {once:true});
@@ -72,7 +72,7 @@ test('aborted request fails closed without retry',async()=>{
 
 test('rejects encoded path traversal and separators before any request',async()=>{
   let calls=0;
-  const read=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>{
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async()=>{
     calls++;
     return {status:200};
   }});
@@ -83,5 +83,20 @@ test('rejects encoded path traversal and separators before any request',async()=
   ]) {
     await assert.rejects(read(path),ReadOnlyTransportError,path);
   }
+  assert.equal(calls,0);
+});
+
+test('requires a safe explicit endpoint allowlist',async()=>{
+  assert.throws(()=>createReadOnlyTransport({origin}),ReadOnlyTransportError);
+  for(const allowedPaths of [[],['/account','/account'],['/account?query=1'],['/orders/../account'],['//evil']]) {
+    assert.throws(()=>createReadOnlyTransport({origin,allowedPaths}),ReadOnlyTransportError);
+  }
+  let calls=0;
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account'],fetchImpl:async()=>{
+    calls++;
+    return {status:200};
+  }});
+  await assert.rejects(read('/orders'),ReadOnlyTransportError);
+  await assert.rejects(read('/account?query=1'),ReadOnlyTransportError);
   assert.equal(calls,0);
 });
