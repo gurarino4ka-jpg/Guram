@@ -34,3 +34,43 @@ test('end-to-end checkpoint persists across restart and rejects replay',async()=
     await assert.rejects(swapped(),ReadOnlyTransportError);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+test('two reader instances sharing a checkpoint emit the same snapshot at most once',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'demo-account-concurrent-'));
+  try {
+    const filePath=join(dir,'checkpoint.json');
+    // Distinct stores simulate independent worker instances sharing one file.
+    const createReader=()=>createPersistedDemoAccountReader({
+      store:createDemoAccountCheckpointStore({filePath}),
+      transport:async()=>response(base),accountPath:'/account/demo',now:()=>now,
+    });
+    const first=await createReader();
+    const second=await createReader();
+    const results=await Promise.allSettled([first(),second()]);
+    assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
+    assert.equal(results.filter(result=>result.status==='rejected').length,1);
+    const rejected=results.find(result=>result.status==='rejected');
+    assert.equal(rejected.reason instanceof ReadOnlyTransportError,true);
+    assert.deepEqual(await createDemoAccountCheckpointStore({filePath}).load(),
+      {accountId:base.accountId,asOf:base.asOf});
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
+
+test('an older reader cannot overwrite checkpoint committed by another instance',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'demo-account-stale-worker-'));
+  try {
+    const filePath=join(dir,'checkpoint.json');
+    const makeReader=snapshot=>createPersistedDemoAccountReader({
+      store:createDemoAccountCheckpointStore({filePath}),
+      transport:async()=>response(snapshot),accountPath:'/account/demo',now:()=>now,
+    });
+    // Both initialize against an empty checkpoint, before either saves.
+    const stale=await makeReader(base);
+    const latest={...base,asOf:'2026-11-11T05:59:32.000Z'};
+    const leading=await makeReader(latest);
+    assert.deepEqual(await leading(),latest);
+    await assert.rejects(stale(),ReadOnlyTransportError);
+    assert.deepEqual(await createDemoAccountCheckpointStore({filePath}).load(),
+      {accountId:latest.accountId,asOf:latest.asOf});
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
