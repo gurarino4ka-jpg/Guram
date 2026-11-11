@@ -577,3 +577,26 @@ test('external truncation of pinned journal is rejected without recreating histo
     await archive.close();
   });
 });
+
+test('same-length in-place journal modification blocks subsequent append',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const original=await fs.readFile(journal,'utf8');
+    const index=original.indexOf('"open":100');
+    assert.notEqual(index,-1);
+    const changed=original.slice(0,index)+original.slice(index).replace('"open":100','"open":101');
+    assert.equal(Buffer.byteLength(changed),Buffer.byteLength(original));
+    await fs.writeFile(journal,changed);
+    const revision={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await assert.rejects(archive.appendObservation({market,candles:[revision]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    assert.equal(await fs.readFile(journal,'utf8'),changed);
+    await archive.close();
+    const reopened=await createCandleArchive(dir);
+    await assert.rejects(reopened.open(),
+      e=>e instanceof ArchiveStoreError&&e.code==='corrupt_journal');
+  });
+});
