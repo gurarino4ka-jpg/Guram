@@ -137,6 +137,10 @@ export async function createCandleArchive(dataDir) {
         lockToken = randomUUID();
         await lockHandle.writeFile(JSON.stringify({pid:process.pid,token:lockToken,createdAt:new Date().toISOString()})+'\n');
         await lockHandle.sync();
+        // Rebuild from disk on every open; never replay into a prior in-memory state.
+        state = new Map();
+        batches = new Set();
+        poisoned = false;
         await load();
       } catch (error) {
         await lockHandle.close().catch(()=>{});
