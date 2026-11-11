@@ -215,7 +215,23 @@ export async function createCandleArchive(dataDir) {
       const line = JSON.stringify({...payload, checksum:sha(JSON.stringify(payload))})+'\n';
       let handle;
       try {
+        // Refuse to follow a symlink or append to a non-regular journal.
+        // This check does not prevent a concurrent pathname swap after lstat.
+        let journalStat;
+        try { journalStat = await fs.lstat(journal); }
+        catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+        if (journalStat && (!journalStat.isFile() || journalStat.isSymbolicLink())) {
+          fail('invalid_journal', 'Archive journal must be a regular file.');
+        }
         handle = await fs.open(journal, 'a', 0o600);
+        const openedStat = await handle.stat();
+        const pathStat = await fs.lstat(journal);
+        if (!openedStat.isFile() || !pathStat.isFile() ||
+            openedStat.dev !== pathStat.dev || openedStat.ino !== pathStat.ino) {
+          fail('invalid_journal', 'Archive journal identity changed before append.');
+        }
         await handle.writeFile(line, 'utf8');
         await handle.sync();
         await handle.close();
