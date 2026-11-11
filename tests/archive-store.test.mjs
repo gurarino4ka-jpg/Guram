@@ -371,3 +371,24 @@ test('failed close after lock takeover releases local descriptor and disables st
     await reopened.close();
   });
 });
+
+test('after lost ownership close is idempotent and a stale writer cannot reopen through successor lock',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    await fs.unlink(lock);
+    const successor=await createCandleArchive(dir);
+    await successor.open();
+    await assert.rejects(first.close(),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    await first.close();
+    await assert.rejects(first.open(),
+      e=>e instanceof ArchiveStoreError&&e.code==='locked');
+    await successor.appendObservation({market,candles:[candle]});
+    await successor.close();
+    await first.open();
+    assert.equal(first.getRevisions(market,candle.openTimeMs).length,1);
+    await first.close();
+  });
+});
