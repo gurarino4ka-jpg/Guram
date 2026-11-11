@@ -3,13 +3,14 @@ import { parseDemoAccountSnapshot } from './demo-account-validation.mjs';
 
 // Provider-neutral composition only. Do not wire to an actual account until
 // the official demo API contract and read-only credentials are reviewed.
-export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(),maxBytes=16384}={}) {
+export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(),maxBytes=16384,bodyTimeoutMs=5000}={}) {
   if(typeof transport!=='function') throw new ReadOnlyTransportError('Read-only transport required');
   if(typeof accountPath!=='string'||!/^\/[a-zA-Z0-9/_?=&.%-]+$/.test(accountPath)||
      accountPath.startsWith('//')||accountPath.includes('..')) {
     throw new ReadOnlyTransportError('Explicit account path required');
   }
-  if(typeof now!=='function'||!Number.isInteger(maxBytes)||maxBytes<256||maxBytes>1048576) {
+  if(typeof now!=='function'||!Number.isInteger(maxBytes)||maxBytes<256||maxBytes>1048576||
+     !Number.isInteger(bodyTimeoutMs)||bodyTimeoutMs<100||bodyTimeoutMs>30000) {
     throw new ReadOnlyTransportError('Invalid reader configuration');
   }
   return async function readDemoAccount({signal}={}) {
@@ -25,17 +26,28 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
     }
     let raw;
     let observedBytes=0;
+    if(signal?.aborted) throw new ReadOnlyTransportError('Account read aborted');
     try {
       // Limit streaming bytes, not just Content-Length or post-buffer length.
       if(!response.body||typeof response.body.getReader!=='function') {
         throw new Error('Streaming response required');
       }
       const reader=response.body.getReader();
+      let timeout;
+      let onAbort;
+      const interrupted=new Promise((_resolve,reject)=>{
+        timeout=setTimeout(()=>reject(new ReadOnlyTransportError('Account body timeout')),bodyTimeoutMs);
+        if(signal) {
+          onAbort=()=>reject(new ReadOnlyTransportError('Account read aborted'));
+          signal.addEventListener('abort',onAbort,{once:true});
+          if(signal.aborted) onAbort();
+        }
+      });
       const chunks=[];
       let size=0;
       try {
         while(true) {
-          const {done,value}=await reader.read();
+          const {done,value}=await Promise.race([reader.read(),interrupted]);
           if(done) break;
           if(!(value instanceof Uint8Array)) throw new Error('Invalid stream chunk');
           size+=value.byteLength;
@@ -43,7 +55,12 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
           if(size>maxBytes) throw new ReadOnlyTransportError('Account response too large');
           chunks.push(value);
         }
-      } finally { reader.releaseLock(); }
+      } finally {
+        clearTimeout(timeout);
+        if(signal&&onAbort) signal.removeEventListener('abort',onAbort);
+        try { reader.cancel().catch(()=>{}); } catch {}
+        reader.releaseLock();
+      }
       const bytes=new Uint8Array(size);
       let offset=0;
       for(const chunk of chunks) { bytes.set(chunk,offset);offset+=chunk.byteLength; }
