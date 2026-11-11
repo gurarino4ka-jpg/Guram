@@ -56,9 +56,9 @@ export async function main(args = process.argv.slice(2)) {
         archive,
         resolveArchiveMarket: archive ? ({ symbol, resolution }) => ({
           schemaVersion: 1, provider: 'bookflow', providerSymbol: symbol,
-          providerTicker: `${symbol}/USDT`, displayName: `${symbol}/USD`,
+          providerTicker: null, displayName: null,
           exchange: null, marketType: 'unknown', priceBasis: 'unknown',
-          quoteAsset: 'USD', settlementToken: 'USD', resolution,
+          quoteAsset: null, settlementToken: null, resolution,
         }) : null,
       });
       state = result.state;
