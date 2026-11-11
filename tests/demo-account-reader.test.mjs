@@ -99,3 +99,20 @@ test('reader configuration rejects query strings and encoded path tricks',()=>{
     assert.throws(()=>createDemoAccountReader({transport,accountPath}),ReadOnlyTransportError);
   }
 });
+
+test('provider exceptions never leak secret text through reader errors',async()=>{
+  const secret='PRIVATE_PROVIDER_TOKEN_123';
+  const cases=[
+    async()=>{throw new Error(secret);},
+    async()=>({headers:{get(){throw new Error(secret);}}}),
+    async()=>fakeResponse({...payload,environment:'live',accountId:secret}),
+  ];
+  for(const transport of cases) {
+    const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
+    await assert.rejects(read(),error=>{
+      assert.equal(error instanceof ReadOnlyTransportError,true);
+      assert.equal(error.message.includes(secret),false);
+      return true;
+    });
+  }
+});
