@@ -20,7 +20,13 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
   return async function read(path,{headers={},signal,method='GET'}={}) {
     if(method!=='GET') throw new ReadOnlyTransportError('Mutation methods forbidden');
     if(typeof path!=='string'||!path.startsWith('/')||path.startsWith('//')||
-       path.includes('\\')||path.includes('#')) {
+       path.includes('\\')||path.includes('#')||/[\u0000-\u001f\u007f]/.test(path)||
+       /%(?:2f|5c|00|0[0-9a-f]|1[0-9a-f]|7f)/i.test(path)||
+       path.split('?')[0].split('/').some(segment=>{
+         let decoded;
+         try { decoded=decodeURIComponent(segment); } catch { return true; }
+         return decoded==='.'||decoded==='..'||decoded.includes('/')||decoded.includes('\\');
+       })) {
       throw new ReadOnlyTransportError('Invalid request path');
     }
     let url;
