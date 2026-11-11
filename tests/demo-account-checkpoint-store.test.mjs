@@ -33,3 +33,18 @@ test('checkpoint store rejects malformed, oversized and invalid checkpoint files
     await assert.rejects(store.save({...checkpoint,secret:'token'}),ReadOnlyTransportError);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+test('rejects sequential checkpoint replay, rollback and account switching',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'demo-checkpoint-'));
+  try {
+    const store=createDemoAccountCheckpointStore({filePath:join(dir,'checkpoint.json')});
+    await store.save(checkpoint);
+    for(const bad of [checkpoint,{...checkpoint,asOf:'2026-11-11T05:59:29.000Z'},
+      {...checkpoint,accountId:'other_demo',asOf:'2026-11-11T05:59:31.000Z'}]) {
+      await assert.rejects(store.save(bad),ReadOnlyTransportError);
+      assert.deepEqual(await store.load(),checkpoint);
+    }
+    await store.save({...checkpoint,asOf:'2026-11-11T05:59:31.000Z'});
+    assert.equal((await store.load()).asOf,'2026-11-11T05:59:31.000Z');
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
