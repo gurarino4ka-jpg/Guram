@@ -85,3 +85,38 @@ test('journal checksum corruption fails closed',async()=>{
     await assert.rejects(second.open(),e=>e instanceof ArchiveStoreError&&e.code==='corrupt_journal');
   });
 });
+
+test('tampered OHLCV is rejected even if batch checksum is recalculated',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    await first.close();
+    const file=path.join(dir,'archive','v1','observations.jsonl');
+    const batch=JSON.parse(await fs.readFile(file,'utf8'));
+    batch.entries[0].candle.close=107;
+    const { createHash }=await import('node:crypto');
+    const payload=JSON.stringify({version:batch.version,id:batch.id,entries:batch.entries});
+    batch.checksum=createHash('sha256').update(payload,'utf8').digest('hex');
+    await fs.writeFile(file,JSON.stringify(batch)+'\n');
+    const second=await createCandleArchive(dir);
+    await assert.rejects(second.open(),e=>e instanceof ArchiveStoreError&&e.code==='corrupt_journal');
+  });
+});
+test('tampered observation time is rejected even if batch checksum is recalculated',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    await first.close();
+    const file=path.join(dir,'archive','v1','observations.jsonl');
+    const batch=JSON.parse(await fs.readFile(file,'utf8'));
+    batch.entries[0].snapshotTimeMs=3_600_000;
+    const { createHash }=await import('node:crypto');
+    const payload=JSON.stringify({version:batch.version,id:batch.id,entries:batch.entries});
+    batch.checksum=createHash('sha256').update(payload,'utf8').digest('hex');
+    await fs.writeFile(file,JSON.stringify(batch)+'\n');
+    const second=await createCandleArchive(dir);
+    await assert.rejects(second.open(),e=>e instanceof ArchiveStoreError&&e.code==='corrupt_journal');
+  });
+});
