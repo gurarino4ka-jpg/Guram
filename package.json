@@ -14,6 +14,7 @@
     "monitor": "node --use-env-proxy monitor/cli.mjs",
     "monitor:once": "node --use-env-proxy monitor/cli.mjs --once",
     "test": "node --test",
-    "demo:verify": "node scripts/verify-demo-readonly.mjs"
+    "demo:verify": "node scripts/verify-demo-readonly.mjs",
+    "demo:smoke": "node scripts/demo-account-smoke.mjs"
   }
 }
