@@ -74,3 +74,21 @@ test('pre-aborted read rejects without producing an accepted account snapshot',a
   const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
   await assert.rejects(read({signal:controller.signal}),ReadOnlyTransportError);
 });
+
+test('stalled streaming body times out and never returns a partial balance',async()=>{
+  const response={status:200,headers:{get:key=>key==='content-type'?'application/json':null},
+    body:new ReadableStream({pull(){return new Promise(()=>{});}})};
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account/demo'],fetchImpl:async()=>response});
+  const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now,bodyTimeoutMs:100});
+  await assert.rejects(read(),ReadOnlyTransportError);
+});
+test('abort during streaming body rejects without a snapshot',async()=>{
+  const controller=new AbortController();
+  const response={status:200,headers:{get:key=>key==='content-type'?'application/json':null},
+    body:new ReadableStream({pull(){return new Promise(()=>{});}})};
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account/demo'],fetchImpl:async()=>response});
+  const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now,bodyTimeoutMs:1000});
+  const pending=read({signal:controller.signal});
+  controller.abort();
+  await assert.rejects(pending,ReadOnlyTransportError);
+});
