@@ -62,6 +62,7 @@ export async function createCandleArchive(dataDir) {
   let state = new Map();
   let batches = new Set();
   let poisoned = false;
+  let journalIdentity = null;
   let queue = Promise.resolve();
   const serial = fn => {
     const task = queue.then(fn);
@@ -163,6 +164,14 @@ export async function createCandleArchive(dataDir) {
         batches = new Set();
         poisoned = false;
         await load();
+        const existingJournal = await fs.lstat(journal).catch(error => {
+          if (error.code === 'ENOENT') return null;
+          throw error;
+        });
+        if (existingJournal && (!existingJournal.isFile() || existingJournal.isSymbolicLink())) {
+          fail('invalid_journal', 'Archive journal must be a regular file.');
+        }
+        journalIdentity = existingJournal ? {dev:existingJournal.dev,ino:existingJournal.ino} : null;
       } catch (error) {
         const ownedToken = lockToken;
         await lockHandle.close().catch(()=>{});
@@ -229,7 +238,8 @@ export async function createCandleArchive(dataDir) {
         const openedStat = await handle.stat();
         const pathStat = await fs.lstat(journal);
         if (!openedStat.isFile() || !pathStat.isFile() ||
-            openedStat.dev !== pathStat.dev || openedStat.ino !== pathStat.ino) {
+            openedStat.dev !== pathStat.dev || openedStat.ino !== pathStat.ino ||
+            (journalIdentity && (openedStat.dev !== journalIdentity.dev || openedStat.ino !== journalIdentity.ino))) {
           fail('invalid_journal', 'Archive journal identity changed before append.');
         }
         await handle.writeFile(line, 'utf8');
@@ -238,6 +248,7 @@ export async function createCandleArchive(dataDir) {
         handle = null;
         // Persist directory entry too (important when the journal was created).
         await syncDirectory(root);
+        journalIdentity = {dev:openedStat.dev,ino:openedStat.ino};
         applyBatch(entries);
         batches.add(payload.id);
         return counts;
