@@ -3,7 +3,7 @@ import { parseDemoAccountSnapshot } from './demo-account-validation.mjs';
 
 // Provider-neutral composition only. Do not wire to an actual account until
 // the official demo API contract and read-only credentials are reviewed.
-export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(),maxBytes=16384,bodyTimeoutMs=5000}={}) {
+export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(),maxBytes=16384,bodyTimeoutMs=5000,checkpoint=null}={}) {
   if(typeof transport!=='function') throw new ReadOnlyTransportError('Read-only transport required');
   if(typeof accountPath!=='string'||!/^\/[a-zA-Z0-9/_-]+$/.test(accountPath)||
      accountPath.startsWith('//')||accountPath.split('/').some(part=>part==='.'||part==='..')) {
@@ -13,10 +13,18 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
      !Number.isInteger(bodyTimeoutMs)||bodyTimeoutMs<100||bodyTimeoutMs>30000) {
     throw new ReadOnlyTransportError('Invalid reader configuration');
   }
-  let lastAcceptedTimestamp=-Infinity;
-  let pinnedAccountId=null;
+  // Caller may restore a previously persisted checkpoint; this module does not write to disk.
+  if(checkpoint!==null&&(
+    !checkpoint||typeof checkpoint!=='object'||Array.isArray(checkpoint)||
+    Object.keys(checkpoint).sort().join(',')!=='accountId,asOf'||
+    typeof checkpoint.accountId!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(checkpoint.accountId)||
+    typeof checkpoint.asOf!=='string'||!Number.isFinite(Date.parse(checkpoint.asOf))||
+    new Date(Date.parse(checkpoint.asOf)).toISOString()!==checkpoint.asOf
+  )) throw new ReadOnlyTransportError('Invalid account checkpoint');
+  let lastAcceptedTimestamp=checkpoint===null?-Infinity:Date.parse(checkpoint.asOf);
+  let pinnedAccountId=checkpoint===null?null:checkpoint.accountId;
   let inFlight=false;
-  return async function readDemoAccount({signal}={}) {
+  async function readDemoAccount({signal}={}) {
     if(inFlight) throw new ReadOnlyTransportError('Concurrent account read forbidden');
     inFlight=true;
     try {
@@ -103,5 +111,7 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
     lastAcceptedTimestamp=timestamp;
     return snapshot;
     } finally { inFlight=false; }
-  };
+  }
+  readDemoAccount.getCheckpoint=()=>pinnedAccountId===null?null:Object.freeze({accountId:pinnedAccountId,asOf:new Date(lastAcceptedTimestamp).toISOString()});
+  return readDemoAccount;
 }
