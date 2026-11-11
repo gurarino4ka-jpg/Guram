@@ -1,4 +1,4 @@
-# CandleArchive technical review (CA-01–CA-04)
+# CandleArchive technical review (CA-01–CA-11)
 
 Status: experimental, opt-in, branch-only. Do not merge or use as authoritative historical data until the gates below pass.
 
@@ -16,8 +16,8 @@ Status: experimental, opt-in, branch-only. Do not merge or use as authoritative 
 - A second archive writer is refused by lock file.
 
 ## Open risks / merge blockers
-1. **Crash durability**: file `fsync` is used, but archive directory metadata is not synced on POSIX. Simulated process-kill and power-loss tests have not been run. No automatic recovery of incomplete tails is implemented; manual inspection required.
-2. **Lock ownership**: archive uses a separate lock file from the existing monitor. The lock does not have a verified token/ownership check at every write and stale-lock recovery is manual.
+1. **Crash durability**: file and directory `fsync` are used on POSIX, but sudden power loss is not tested; directory sync is skipped on Windows. Simulated process-kill and power-loss tests have not been run. No automatic recovery of incomplete tails is implemented; manual inspection required.
+2. **Lock ownership**: archive uses a separate lock file from the existing monitor. The token, PID, device and inode are checked before writes and release, but the check and subsequent operation are not atomic. Stale-lock recovery is manual.
 3. **Market provenance**: CLI currently constructs conservative Bookflow identity from symbol conventions; this must be checked against verified response metadata before the archive can be treated as an authoritative source. Unknown market type and price basis must remain unknown.
 4. **Journal integrity**: record hash covers selected revision metadata; outer batch checksum covers the complete batch, but is not a keyed signature or externally anchored hash chain. A fully rewritten journal cannot be authenticated.
 5. **Query semantics**: `getCandle` uses `knownAtMs` and does not yet provide a bounded range API or observation-level audit trail for unchanged repeats.
@@ -27,9 +27,9 @@ Status: experimental, opt-in, branch-only. Do not merge or use as authoritative 
 
 ## Merge gates
 - Run all repository tests and inspect GitHub Actions on the latest commit.
-- Add failure-injection tests for interrupted write/lock ownership; document recovery procedure.
+- Add deterministic failure-injection tests for interrupted writes; lock replacement tests and manual recovery procedure exist.
 - Confirm market identity against provider response, not inferred naming.
-- Add bounded query and end-to-end collector/CLI tests using fixtures.
+- Add bounded query and full CLI integration tests using fixtures. Collector + archive + store end-to-end fixture test exists.
 - Independent code review; merge only after explicit approval.
 
 ## Manual recovery after a crash (no automatic lock removal)
@@ -41,3 +41,10 @@ Status: experimental, opt-in, branch-only. Do not merge or use as authoritative 
 6. Verify replay, revision counts and the latest point-in-time candle before resuming collection. Never use an unverified archive for historical strategy evaluation.
 
 The current lock is advisory and not a cross-host distributed lease. A replacement between ownership check and write remains a race; use one writer and an isolated local filesystem.
+
+## CA-11 update (2026-11-11)
+- CI verified lock replacement regression; no live collection or trading.
+- Archive directory fsync now follows journal append and lock creation/removal on supported POSIX systems.
+- Matching tokens cannot bypass inode/device verification during the next ownership check.
+- **Merge blocker:** TOCTOU remains between checking the lock and writing the journal. Advisory local locks are not distributed fencing.
+- CI does not establish power-loss consistency or real exchange market provenance.
