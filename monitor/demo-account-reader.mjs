@@ -22,7 +22,7 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
       if(response?.status!==200) throw new ReadOnlyTransportError('Unexpected account HTTP status');
       declaredLength=response?.headers?.get?.('content-length');
       if(declaredLength!==null&&declaredLength!==undefined) {
-        if(typeof declaredLength!=='string'||!/^\d+$/.test(declaredLength)||Number(declaredLength)>maxBytes) {
+        if(typeof declaredLength!=='string'||!/^(?:0|[1-9][0-9]*)$/.test(declaredLength)||!Number.isSafeInteger(Number(declaredLength))||Number(declaredLength)>maxBytes) {
           throw new ReadOnlyTransportError('Account response too large');
         }
       }
