@@ -37,15 +37,29 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
     if(signal?.aborted) controller.abort();
     else signal?.addEventListener('abort',abort,{once:true});
     try {
-      const response=await fetchImpl(url.href,{
-        method:'GET',headers:{...headers},redirect:'manual',
-        credentials:'omit',signal:controller.signal,
-      });
-      if(!response||typeof response.status!=='number') {
+      let response;
+      try {
+        response=await fetchImpl(url.href,{
+          method:'GET',headers:{...headers},redirect:'manual',
+          credentials:'omit',signal:controller.signal,
+        });
+      } catch {
+        // Never expose provider errors: they may contain URLs, tokens or account data.
+        throw new ReadOnlyTransportError(controller.signal.aborted?'Read-only request aborted':'Read-only request failed');
+      }
+      if(controller.signal.aborted) throw new ReadOnlyTransportError('Read-only request aborted');
+      if(!response||!Number.isInteger(response.status)||response.status<100||response.status>599) {
         throw new ReadOnlyTransportError('Invalid response');
       }
       if(response.status>=300&&response.status<400) {
         throw new ReadOnlyTransportError('Redirect forbidden');
+      }
+      if(response.status===401||response.status===403) {
+        throw new ReadOnlyTransportError('Read-only authorization rejected');
+      }
+      if(response.status===429) throw new ReadOnlyTransportError('Read-only rate limit exceeded');
+      if(response.status<200||response.status>=300) {
+        throw new ReadOnlyTransportError('Read-only HTTP request unsuccessful');
       }
       return response;
     } finally {
