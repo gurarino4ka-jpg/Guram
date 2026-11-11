@@ -198,6 +198,8 @@ export async function createCandleArchive(dataDir) {
         await handle.sync();
         await handle.close();
         handle = null;
+        // Persist directory entry too (important when the journal was created).
+        await syncDirectory(root);
         applyBatch(entries);
         batches.add(payload.id);
         return counts;
