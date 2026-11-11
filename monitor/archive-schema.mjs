@@ -160,3 +160,45 @@ export function createRecordHash(record) {
     previousRevisionHash: record.previousRevisionHash,
   });
 }
+
+/** Recompute content digest from the values persisted in an archive revision. */
+export function createStoredCandleHash(entry) {
+  if (!record(entry) || !record(entry.candle) ||
+      typeof entry.marketId !== 'string' ||
+      !/^market-v1-[a-f0-9]{64}$/.test(entry.marketId) ||
+      typeof entry.resolution !== 'string' ||
+      !SUPPORTED_RESOLUTIONS.includes(entry.resolution)) {
+    fail('invalid_revision', 'Invalid stored candle identity.');
+  }
+  const c = entry.candle;
+  keysExactly(c, ['openTimeMs', 'open', 'high', 'low', 'close', 'volume']);
+  const periodMs = resolutionSeconds(entry.resolution) * 1000;
+  timestamp(c.openTimeMs, 'openTimeMs');
+  if (c.openTimeMs % periodMs !== 0 ||
+      entry.candleKey !== entry.marketId + ':' + c.openTimeMs) {
+    fail('invalid_revision', 'Stored candle key does not match its identity and time.');
+  }
+  const open = price(c.open, 'open');
+  const high = price(c.high, 'high');
+  const low = price(c.low, 'low');
+  const close = price(c.close, 'close');
+  if (low > Math.min(open, close) || high < Math.max(open, close) || low > high) {
+    fail('invalid_ohlc', 'Stored OHLC bounds are inconsistent.');
+  }
+  if (c.volume !== null &&
+      (typeof c.volume !== 'number' || !Number.isFinite(c.volume) || c.volume < 0)) {
+    fail('invalid_volume', 'Invalid stored volume.');
+  }
+  const snapshotTimeMs = timestamp(entry.snapshotTimeMs, 'snapshotTimeMs');
+  const receivedAtMs = timestamp(entry.receivedAtMs, 'receivedAtMs');
+  const knownAtMs = timestamp(entry.knownAtMs, 'knownAtMs');
+  if (!Number.isSafeInteger(c.openTimeMs + periodMs) ||
+      c.openTimeMs + periodMs > snapshotTimeMs ||
+      snapshotTimeMs > receivedAtMs || receivedAtMs > knownAtMs) {
+    fail('observation_order', 'Stored observation timestamps are inconsistent.');
+  }
+  return digest({
+    marketId: entry.marketId, resolution: entry.resolution, openTimeMs: c.openTimeMs,
+    open, high, low, close, volume: c.volume,
+  });
+}
