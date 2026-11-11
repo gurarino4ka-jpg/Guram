@@ -75,3 +75,20 @@ The current lock is advisory and not a cross-host distributed lease. A replaceme
 - Require independent review and explicit merge approval. Do not merge automatically.
 
 No live market collection, order placement, demo-account changes or backtests were performed in CA-01–CA-19.
+
+## CA-26 synthetic benchmark baseline (2026-11-11)
+
+Source: GitHub Actions run https://github.com/gurarino4ka-jpg/Guram/actions/runs/42965512475
+(artifact 13830951825, retained for 14 days); Node.js v24.22.2, Linux x64, GitHub-hosted runner.
+
+| Synthetic candles | Batches | Append (ms) | Replay (ms) | Journal bytes | Heap used bytes |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 10 | 58 | 16 | 592,120 | 9,773,336 |
+| 5,000 | 50 | 243 | 96 | 2,990,593 | 30,508,512 |
+| 10,000 | 100 | 478 | 192 | 6,027,441 | 23,873,176 |
+
+These are **single-run, synthetic, non-production** measurements. Append time excludes archive creation/initial open and close; replay time includes the subsequent open and journal validation. Heap used is a point-in-time observation after replay and GC is not controlled; do not interpret it as peak memory or a monotonic trend. Timing includes filesystem and CI-runner variability. The 10k case is not a scale or durability qualification.
+
+**Interpretation:** append and replay latency appear approximately linear across this small range. No production SLO, sustained throughput, concurrent-reader guarantee or maximum supported archive size is established. The NO-GO decision above remains in effect.
+
+**Next measurement gate:** run repeated trials with median/p95, collect peak RSS and workload parameters, and test 100k+ observations on a dedicated environment with explicit disk/OS metadata before choosing an index or compaction design.
