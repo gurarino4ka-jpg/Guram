@@ -221,3 +221,19 @@ test('stale-looking lock is not automatically removed or overwritten',async()=>{
     assert.equal(await fs.readFile(lock,'utf8'),stale);
   });
 });
+
+test('archive refuses reads before opening and after closing',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    const read=()=>archive.getCandle({identity:market,openTimeMs:candle.openTimeMs});
+    const revisions=()=>archive.getRevisions(market,candle.openTimeMs);
+    assert.throws(read,e=>e instanceof ArchiveStoreError&&e.code==='not_ready');
+    assert.throws(revisions,e=>e instanceof ArchiveStoreError&&e.code==='not_ready');
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    assert.equal(read().candle.close,105);
+    await archive.close();
+    assert.throws(read,e=>e instanceof ArchiveStoreError&&e.code==='not_ready');
+    assert.throws(revisions,e=>e instanceof ArchiveStoreError&&e.code==='not_ready');
+  });
+});
