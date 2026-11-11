@@ -237,3 +237,20 @@ test('archive refuses reads before opening and after closing',async()=>{
     assert.throws(revisions,e=>e instanceof ArchiveStoreError&&e.code==='not_ready');
   });
 });
+
+test('replacing lock inode with same token refuses writes and preserves foreign lock',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    const original=await fs.readFile(lock,'utf8');
+    const replacement=lock+'.replacement';
+    await fs.writeFile(replacement,original);
+    await fs.rename(replacement,lock);
+    await assert.rejects(archive.appendObservation({market,candles:[candle]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    await assert.rejects(archive.close(),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    assert.equal(await fs.readFile(lock,'utf8'),original);
+  });
+});
