@@ -83,6 +83,13 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
         handle=null;
         await rejectUnsafeTarget();
         await rename(temp,target);
+        // POSIX: fsync the parent directory so the rename survives a crash.
+        // Windows does not expose a portable directory fsync via Node.
+        if(process.platform!=='win32') {
+          const dirHandle=await open(dirname(target),'r');
+          try { await dirHandle.sync(); }
+          finally { await dirHandle.close(); }
+        }
       } catch {
         if(handle) { try { await handle.close(); } catch {} }
         try { await unlink(temp); } catch {}
