@@ -15,7 +15,11 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
   }
   let lastAcceptedTimestamp=-Infinity;
   let pinnedAccountId=null;
+  let inFlight=false;
   return async function readDemoAccount({signal}={}) {
+    if(inFlight) throw new ReadOnlyTransportError('Concurrent account read forbidden');
+    inFlight=true;
+    try {
     let response;
     try { response=await transport(accountPath,{method:'GET',signal}); }
     catch { throw new ReadOnlyTransportError('Account request failed'); }
@@ -98,5 +102,6 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
     pinnedAccountId=snapshot.accountId;
     lastAcceptedTimestamp=timestamp;
     return snapshot;
+    } finally { inFlight=false; }
   };
 }
