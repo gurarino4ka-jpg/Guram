@@ -36,6 +36,10 @@ const phases=[
       'tests/persisted-demo-account-reader.test.mjs',
       'tests/persisted-demo-account-e2e.test.mjs']],
   },
+  {
+    title:'Offline end-to-end synthetic demo account smoke',
+    commands:[['scripts/demo-account-smoke.mjs']],
+  },
 ];
 
 let checks=0;
