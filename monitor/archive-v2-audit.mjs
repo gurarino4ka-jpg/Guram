@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { SegmentManifestError, createSegmentDescriptor, verifySegmentManifest } from './archive-v2-manifest.mjs';
+import { SegmentManifestError, verifySegmentManifest } from './archive-v2-manifest.mjs';
 import { readVersionedManifest,generationFile } from './archive-v2-generations.mjs';
 import { readHead } from './archive-v2-head.mjs';
 
@@ -12,11 +12,8 @@ export async function verifyPublishedChain(root) {
   const head=await readHead(base);
   const names=await fs.readdir(path.join(base,'manifests'));
   const expected=Array.from({length:head.generation},(_,i)=>generationFile(i+1));
-  if(names.length!==expected.length||names.some((name,i)=>name!==expected[i])) {
-    // Directory order is not guaranteed: compare sorted names.
-    if(names.length!==expected.length||names.slice().sort().some((name,i)=>name!==expected[i])) {
-      throw new SegmentManifestError('Missing or unexpected manifest generation');
-    }
+  if(names.length!==expected.length||names.slice().sort().some((name,i)=>name!==expected[i])) {
+    throw new SegmentManifestError('Missing or unexpected manifest generation');
   }
   let previousHash=null;
   let previousSegments=[];
