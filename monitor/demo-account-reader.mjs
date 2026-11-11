@@ -5,8 +5,8 @@ import { parseDemoAccountSnapshot } from './demo-account-validation.mjs';
 // the official demo API contract and read-only credentials are reviewed.
 export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(),maxBytes=16384,bodyTimeoutMs=5000}={}) {
   if(typeof transport!=='function') throw new ReadOnlyTransportError('Read-only transport required');
-  if(typeof accountPath!=='string'||!/^\/[a-zA-Z0-9/_?=&.%-]+$/.test(accountPath)||
-     accountPath.startsWith('//')||accountPath.includes('..')) {
+  if(typeof accountPath!=='string'||!/^\/[a-zA-Z0-9/_-]+$/.test(accountPath)||
+     accountPath.startsWith('//')||accountPath.split('/').some(part=>part==='.'||part==='..')) {
     throw new ReadOnlyTransportError('Explicit account path required');
   }
   if(typeof now!=='function'||!Number.isInteger(maxBytes)||maxBytes<256||maxBytes>1048576||
