@@ -284,3 +284,22 @@ test('interrupted second batch preserves committed bytes and blocks restart',asy
     assert.deepEqual(await fs.readFile(backup),damaged);
   });
 });
+
+test('lock disappearance during operation refuses further writes and does not recreate lock',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const before=await fs.readFile(journal);
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    await fs.unlink(lock);
+    const correction={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await assert.rejects(archive.appendObservation({market,candles:[correction]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    assert.deepEqual(await fs.readFile(journal),before);
+    await assert.rejects(archive.close(),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    await assert.rejects(fs.access(lock),e=>e.code==='ENOENT');
+  });
+});
