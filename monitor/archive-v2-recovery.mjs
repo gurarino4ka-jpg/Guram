@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { SegmentManifestError } from './archive-v2-manifest.mjs';
 import { readHead } from './archive-v2-head.mjs';
-import { generationFile, readVersionedManifest } from './archive-v2-generations.mjs';
+import { readVersionedManifest } from './archive-v2-generations.mjs';
 import { verifyPublishedChain } from './archive-v2-audit.mjs';
 
 // Read-only crash triage. Does not repair, delete or adopt orphan files.
@@ -25,8 +25,12 @@ export async function inspectV2Recovery(root) {
   const [manifestNames,segmentNames,rootNames]=await Promise.all([
     fs.readdir(manifestDir),fs.readdir(segmentDir),fs.readdir(base),
   ]);
-  const published=new Set(Array.from({length:head.generation},(_,i)=>generationFile(i+1)));
-  const orphanManifests=manifestNames.filter(name=>!published.has(name)).sort();
+  // Never allocate proportional to an untrusted HEAD generation (up to 10^12).
+  const orphanManifests=manifestNames.filter(name=>{
+    if(!/^\\d{12}\\.json$/.test(name)) return true;
+    const number=Number(name.slice(0,12));
+    return !Number.isSafeInteger(number)||number<1||number>head.generation;
+  }).sort();
   const writerLockPresent=rootNames.includes('archive.lock');
   const stagingFiles=rootNames.filter(name=>name.startsWith('.HEAD-')&&name.endsWith('.tmp')).sort();
   const unexpectedRootFiles=rootNames.filter(name=>name.startsWith('.HEAD-')&&!name.endsWith('.tmp')).sort();
