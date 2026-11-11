@@ -92,3 +92,15 @@ These are **single-run, synthetic, non-production** measurements. Append time ex
 **Interpretation:** append and replay latency appear approximately linear across this small range. No production SLO, sustained throughput, concurrent-reader guarantee or maximum supported archive size is established. The NO-GO decision above remains in effect.
 
 **Next measurement gate:** run repeated trials with median/p95, collect peak RSS and workload parameters, and test 100k+ observations on a dedicated environment with explicit disk/OS metadata before choosing an index or compaction design.
+
+## CA-29 repeated benchmark baseline (2026-11-11)
+
+Source: successful GitHub Actions run https://github.com/gurarino4ka-jpg/Guram/actions/runs/42966296455 (Node.js v24.22.2, Linux x64, three independent child-process trials per size).
+
+| Synthetic candles | Append trials (ms) | Append median / p95 (ms) | Replay trials (ms) | Replay median / p95 (ms) |
+| ---: | --- | ---: | --- | ---: |
+| 1,000 | 62, 72, 69 | 69 / 72 | 14, 13, 13 | 13 / 14 |
+| 5,000 | 304, 261, 240 | 261 / 304 | 67, 67, 62 | 67 / 67 |
+| 10,000 | 599, 564, 513 | 564 / 599 | 147, 143, 141 | 143 / 147 |
+
+The reported p95 uses the nearest-rank method: for only three samples it equals the maximum, so it is **not** a robust tail-latency estimate. Heap-used observations are not peak RSS; repeated tests are still small and runner-dependent. The NO-GO deployment decision remains unchanged.
