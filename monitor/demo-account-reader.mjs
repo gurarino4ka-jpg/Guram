@@ -19,6 +19,7 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
     catch { throw new ReadOnlyTransportError('Account request failed'); }
     let declaredLength;
     try {
+      if(response?.status!==200) throw new ReadOnlyTransportError('Unexpected account HTTP status');
       declaredLength=response?.headers?.get?.('content-length');
       if(declaredLength!==null&&declaredLength!==undefined) {
         if(typeof declaredLength!=='string'||!/^\d+$/.test(declaredLength)||Number(declaredLength)>maxBytes) {
