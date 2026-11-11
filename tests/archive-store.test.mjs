@@ -546,3 +546,34 @@ test('descriptor-pinned replay restores committed revisions after clean close',a
     await reader.close();
   });
 });
+
+test('external append to pinned journal is rejected without adding new observation',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    await fs.appendFile(journal,'external-data\n');
+    const before=await fs.readFile(journal);
+    const revision={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await assert.rejects(archive.appendObservation({market,candles:[revision]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    assert.deepEqual(await fs.readFile(journal),before);
+    await archive.close();
+  });
+});
+
+test('external truncation of pinned journal is rejected without recreating history',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    await fs.truncate(journal,0);
+    const revision={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await assert.rejects(archive.appendObservation({market,candles:[revision]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    assert.equal((await fs.stat(journal)).size,0);
+    await archive.close();
+  });
+});
