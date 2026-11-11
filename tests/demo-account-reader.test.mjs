@@ -142,3 +142,12 @@ test('cancels the underlying body stream when byte limit is exceeded',async()=>{
   await assert.rejects(read(),ReadOnlyTransportError);
   assert.equal(cancellations,1);
 });
+
+test('reader rejects non-200 responses even from an injected custom transport',async()=>{
+  for(const status of [undefined,0,201,204,206,301,401,500]) {
+    const transport=async()=>({status,headers:{get:key=>key==='content-type'?'application/json':null},
+      body:new ReadableStream({start(controller){controller.close();}})});
+    const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
+    await assert.rejects(read(),ReadOnlyTransportError,String(status));
+  }
+});
