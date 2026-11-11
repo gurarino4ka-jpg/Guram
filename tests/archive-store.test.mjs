@@ -517,3 +517,32 @@ test('deleted pinned journal is not silently recreated during append',async()=>{
     await archive.close();
   });
 });
+
+test('opening an archive rejects symlinked journal before replay',async()=>{
+  await fixture(async dir=>{
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const archive=await createCandleArchive(dir);
+    const target=path.join(dir,'outside-journal');
+    await fs.writeFile(target,'external-data\n');
+    try { await fs.symlink(target,journal); }
+    catch(error) { if(error.code==='EPERM'||error.code==='EACCES') return; throw error; }
+    await assert.rejects(archive.open(),
+      e=>e instanceof ArchiveStoreError&&e.code==='invalid_journal');
+    assert.equal(await fs.readFile(target,'utf8'),'external-data\n');
+    await assert.rejects(fs.access(path.join(dir,'archive','v1','archive.lock')),
+      e=>e.code==='ENOENT');
+  });
+});
+
+test('descriptor-pinned replay restores committed revisions after clean close',async()=>{
+  await fixture(async dir=>{
+    const writer=await createCandleArchive(dir);
+    await writer.open();
+    await writer.appendObservation({market,candles:[candle]});
+    await writer.close();
+    const reader=await createCandleArchive(dir);
+    await reader.open();
+    assert.equal(reader.getRevisions(market,candle.openTimeMs).length,1);
+    await reader.close();
+  });
+});
