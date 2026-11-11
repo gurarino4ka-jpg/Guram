@@ -486,3 +486,34 @@ test('newline-terminated but invalid interrupted batch is rejected without modif
       e=>e.code==='ENOENT');
   });
 });
+
+test('unexpected journal appearing after open is never appended',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const unexpected='external-data\n';
+    await fs.writeFile(journal,unexpected);
+    await assert.rejects(archive.appendObservation({market,candles:[candle]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    assert.equal(await fs.readFile(journal,'utf8'),unexpected);
+    await archive.close();
+  });
+});
+
+test('deleted pinned journal is not silently recreated during append',async()=>{
+  await fixture(async dir=>{
+    const archive=await createCandleArchive(dir);
+    await archive.open();
+    await archive.appendObservation({market,candles:[candle]});
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const saved=journal+'.saved';
+    await fs.rename(journal,saved);
+    const revision={...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000};
+    await assert.rejects(archive.appendObservation({market,candles:[revision]}),
+      e=>e instanceof ArchiveStoreError&&e.code==='write_failed');
+    await assert.rejects(fs.access(journal),e=>e.code==='ENOENT');
+    await fs.rename(saved,journal);
+    await archive.close();
+  });
+});
