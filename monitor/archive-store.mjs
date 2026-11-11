@@ -105,13 +105,7 @@ export async function createCandleArchive(dataDir) {
     state = next;
   }
 
-  async function load() {
-    let data;
-    try { data = await fs.readFile(journal, 'utf8'); }
-    catch (error) {
-      if (error.code === 'ENOENT') return;
-      fail('corrupt_journal', 'Cannot read archive journal.', error);
-    }
+  async function load(data) {
     if (data && !data.endsWith('\n')) fail('corrupt_journal', 'Incomplete archive journal tail; preserve before repair.');
     const rows = data ? data.slice(0, -1).split('\n') : [];
     for (let index = 0; index < rows.length; index++) {
@@ -164,7 +158,6 @@ export async function createCandleArchive(dataDir) {
         state = new Map();
         batches = new Set();
         poisoned = false;
-        await load();
         const existingJournal = await fs.lstat(journal).catch(error => {
           if (error.code === 'ENOENT') return null;
           throw error;
@@ -172,7 +165,32 @@ export async function createCandleArchive(dataDir) {
         if (existingJournal && (!existingJournal.isFile() || existingJournal.isSymbolicLink())) {
           fail('invalid_journal', 'Archive journal must be a regular file.');
         }
-        journalIdentity = existingJournal ? {dev:existingJournal.dev,ino:existingJournal.ino} : null;
+        if (existingJournal) {
+          // Replay and pin the same file descriptor, not a path read followed
+          // by an unrelated lstat that could identify a replacement file.
+          const reader = await fs.open(journal, 'r');
+          try {
+            const opened = await reader.stat();
+            if (!opened.isFile() || opened.dev !== existingJournal.dev ||
+                opened.ino !== existingJournal.ino) {
+              fail('invalid_journal', 'Journal changed before replay.');
+            }
+            const data = await reader.readFile('utf8');
+            const after = await fs.lstat(journal);
+            if (!after.isFile() || after.isSymbolicLink() ||
+                after.dev !== opened.dev || after.ino !== opened.ino ||
+                after.size !== opened.size) {
+              fail('invalid_journal', 'Journal changed during replay.');
+            }
+            await load(data);
+            journalIdentity = {dev:opened.dev,ino:opened.ino};
+          } finally {
+            await reader.close();
+          }
+        } else {
+          // A newly appearing journal will be rejected by exclusive creation.
+          journalIdentity = null;
+        }
       } catch (error) {
         const ownedToken = lockToken;
         await lockHandle.close().catch(()=>{});
