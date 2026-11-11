@@ -254,3 +254,33 @@ test('replacing lock inode with same token refuses writes and preserves foreign 
     assert.equal(await fs.readFile(lock,'utf8'),original);
   });
 });
+
+test('interrupted second batch preserves committed bytes and blocks restart',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    await first.close();
+    const journal=path.join(dir,'archive','v1','observations.jsonl');
+    const committed=await fs.readFile(journal);
+    const torn=Buffer.from('{"version":1,"id":"interrupted"', 'utf8');
+    await fs.appendFile(journal,torn);
+    const damaged=await fs.readFile(journal);
+    assert.deepEqual(damaged.subarray(0,committed.length),committed);
+    const second=await createCandleArchive(dir);
+    await assert.rejects(second.open(),
+      e=>e instanceof ArchiveStoreError&&e.code==='corrupt_journal');
+    assert.deepEqual(await fs.readFile(journal),damaged);
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    await assert.rejects(fs.access(lock),e=>e.code==='ENOENT');
+    // Offline repair is explicit and occurs only after preserving the damaged bytes.
+    const backup=journal+'.damaged';
+    await fs.copyFile(journal,backup);
+    await fs.writeFile(journal,committed);
+    const recovered=await createCandleArchive(dir);
+    await recovered.open();
+    assert.equal(recovered.getRevisions(market,candle.openTimeMs).length,1);
+    await recovered.close();
+    assert.deepEqual(await fs.readFile(backup),damaged);
+  });
+});
