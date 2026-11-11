@@ -100,3 +100,23 @@ test('requires a safe explicit endpoint allowlist',async()=>{
   await assert.rejects(read('/account?query=1'),ReadOnlyTransportError);
   assert.equal(calls,0);
 });
+
+test('rejects credentials, cookies, custom headers and method overrides before network',async()=>{
+  let calls=0;
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account'],fetchImpl:async()=>{
+    calls++;
+    return {status:200};
+  }});
+  for(const headers of [
+    {Authorization:'Bearer private-token'},
+    {Cookie:'session=secret'},
+    {'X-HTTP-Method-Override':'POST'},
+    {'Proxy-Authorization':'Basic private'},
+    {'Accept':'text/html'},
+    {'Accept':'application/json','X-Custom':'value'},
+  ]) {
+    await assert.rejects(read('/account',{headers}),ReadOnlyTransportError);
+  }
+  await read('/account',{headers:{Accept:'application/json'}});
+  assert.equal(calls,1);
+});
