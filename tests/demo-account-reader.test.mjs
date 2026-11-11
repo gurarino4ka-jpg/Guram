@@ -151,3 +151,11 @@ test('reader rejects non-200 responses even from an injected custom transport',a
     await assert.rejects(read(),ReadOnlyTransportError,String(status));
   }
 });
+
+test('rejects noncanonical and unsafe Content-Length values',async()=>{
+  for(const length of ['00','01','0001','+1','1.0','1e2','9007199254740993','999999999999999999999999999999','-1',' 1','1 ','1, 2']) {
+    const transport=async()=>({status:200,headers:{get:key=>key==='content-type'?'application/json':key==='content-length'?length:null}});
+    const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
+    await assert.rejects(read(),ReadOnlyTransportError,length);
+  }
+});
