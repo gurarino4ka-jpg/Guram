@@ -246,7 +246,17 @@ export async function createCandleArchive(dataDir) {
     },
     close: () => serial(async () => {
       if (!lockHandle) return;
-      await verifyLockOwnership();
+      try {
+        await verifyLockOwnership();
+      } catch (error) {
+        // Release our descriptor even when the pathname belongs to another writer.
+        // Never unlink an unverified lock or allow stale in-memory reads.
+        poisoned = true;
+        await lockHandle.close().catch(() => {});
+        lockHandle = null;
+        lockToken = null;
+        throw error;
+      }
       await lockHandle.close();
       lockHandle = null;
       lockToken = null;
