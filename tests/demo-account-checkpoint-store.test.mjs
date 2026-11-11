@@ -113,3 +113,16 @@ test('rejects oversized checkpoint before decoding and malformed UTF-8',async()=
     assert.deepEqual(await store.load(),checkpoint);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+test('checkpoint persists across separate store instances after atomic replacement',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'demo-checkpoint-'));
+  try {
+    const filePath=join(dir,'checkpoint.json');
+    await createDemoAccountCheckpointStore({filePath}).save(checkpoint);
+    const newer={...checkpoint,asOf:'2026-11-11T05:59:31.000Z'};
+    await createDemoAccountCheckpointStore({filePath}).save(newer);
+    const restored=await createDemoAccountCheckpointStore({filePath}).load();
+    assert.deepEqual(restored,newer);
+    assert.equal(Object.isFrozen(restored),true);
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
