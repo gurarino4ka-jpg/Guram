@@ -20,6 +20,8 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
     throw new ReadOnlyTransportError('Invalid checkpoint file path');
   }
   const target=resolve(filePath);
+  // Never expire or steal this lock by age: a paused process may still own it.
+  // After a crash, an operator must verify all writers stopped before removing it.
   const lockPath=target+'.lock';
   let saving=false;
   const store={
