@@ -58,17 +58,22 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
       throw new ReadOnlyTransportError('Request headers not allowlisted');
     }
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),timeoutMs);
-    const abort=()=>controller.abort();
-    if(signal?.aborted) controller.abort();
+    let rejectInterrupted;
+    const interrupted=new Promise((_resolve,reject)=>{ rejectInterrupted=reject; });
+    const abort=()=>{
+      controller.abort();
+      rejectInterrupted(new ReadOnlyTransportError('Read-only request aborted'));
+    };
+    const timer=setTimeout(abort,timeoutMs);
+    if(signal?.aborted) abort();
     else signal?.addEventListener('abort',abort,{once:true});
     try {
       let response;
       try {
-        response=await fetchImpl(url.href,{
+        response=await Promise.race([fetchImpl(url.href,{
           method:'GET',headers:{...headers},redirect:'manual',
           credentials:'omit',signal:controller.signal,
-        });
+        }),interrupted]);
       } catch {
         // Never expose provider errors: they may contain URLs, tokens or account data.
         throw new ReadOnlyTransportError(controller.signal.aborted?'Read-only request aborted':'Read-only request failed');
