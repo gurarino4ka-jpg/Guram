@@ -183,7 +183,7 @@ export async function createCandleArchive(dataDir) {
               fail('invalid_journal', 'Journal changed during replay.');
             }
             await load(data);
-            journalIdentity = {dev:opened.dev,ino:opened.ino,size:opened.size};
+            journalIdentity = {dev:opened.dev,ino:opened.ino,size:opened.size,hash:sha(data)};
           } finally {
             await reader.close();
           }
@@ -272,6 +272,14 @@ export async function createCandleArchive(dataDir) {
               openedStat.size !== journalIdentity.size))) {
           fail('invalid_journal', 'Archive journal identity changed before append.');
         }
+        // Detect same-size in-place tampering since the last successful replay/append.
+        // This is O(journal size) per append; benchmark before production use.
+        const priorData = await fs.readFile(journal, 'utf8');
+        const preWriteStat = await handle.stat();
+        if (preWriteStat.size !== openedStat.size ||
+            (journalIdentity && sha(priorData) !== journalIdentity.hash)) {
+          fail('invalid_journal', 'Archive journal content changed since last verified state.');
+        }
         await handle.writeFile(line, 'utf8');
         await handle.sync();
         const writtenStat = await handle.stat();
@@ -282,7 +290,7 @@ export async function createCandleArchive(dataDir) {
         handle = null;
         // Persist directory entry too (important when the journal was created).
         await syncDirectory(root);
-        journalIdentity = {dev:openedStat.dev,ino:openedStat.ino,size:writtenStat.size};
+        journalIdentity = {dev:openedStat.dev,ino:openedStat.ino,size:writtenStat.size,hash:sha(priorData+line)};
         applyBatch(entries);
         batches.add(payload.id);
         return counts;
