@@ -27,6 +27,7 @@ export async function inspectV2Recovery(root) {
   ]);
   const published=new Set(Array.from({length:head.generation},(_,i)=>generationFile(i+1)));
   const orphanManifests=manifestNames.filter(name=>!published.has(name)).sort();
+  const writerLockPresent=rootNames.includes('archive.lock');
   const stagingFiles=rootNames.filter(name=>name.startsWith('.HEAD-')&&name.endsWith('.tmp')).sort();
   const unexpectedRootFiles=rootNames.filter(name=>name.startsWith('.HEAD-')&&!name.endsWith('.tmp')).sort();
   const committedSegments=new Set(committedManifest.segments.map(s=>s.file));
@@ -39,7 +40,8 @@ export async function inspectV2Recovery(root) {
     unexpectedRootFiles,
     segmentFiles:segmentNames.slice().sort(),
     orphanSegments,
+    writerLockPresent,
     committedIntegrityVerified:committedIntegrity!==null,
-    requiresOperatorReview:committedIntegrity===null||orphanSegments.length>0||orphanManifests.length>0||stagingFiles.length>0||unexpectedRootFiles.length>0,
+    requiresOperatorReview:writerLockPresent||committedIntegrity===null||orphanSegments.length>0||orphanManifests.length>0||stagingFiles.length>0||unexpectedRootFiles.length>0,
   };
 }
