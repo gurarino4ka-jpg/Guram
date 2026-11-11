@@ -350,3 +350,24 @@ test('former owner cannot append after another archive takes over a replaced loc
     await replay.close();
   });
 });
+
+test('failed close after lock takeover releases local descriptor and disables stale reads',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    const lock=path.join(dir,'archive','v1','archive.lock');
+    await fs.unlink(lock);
+    const second=await createCandleArchive(dir);
+    await second.open();
+    await assert.rejects(first.close(),
+      e=>e instanceof ArchiveStoreError&&e.code==='lock_changed');
+    assert.throws(()=>first.getRevisions(market,candle.openTimeMs),
+      e=>e instanceof ArchiveStoreError&&e.code==='not_ready');
+    await second.close();
+    const reopened=await createCandleArchive(dir);
+    await reopened.open();
+    assert.equal(reopened.getRevisions(market,candle.openTimeMs).length,1);
+    await reopened.close();
+  });
+});
