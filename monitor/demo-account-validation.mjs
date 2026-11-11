@@ -27,7 +27,7 @@ export function parseDemoAccountSnapshot(payload,{now=Date.now(),maxAgeMs=120000
   if(!Number.isFinite(timestamp)||new Date(timestamp).toISOString()!==payload.asOf) {
     throw new ReadOnlyTransportError('Noncanonical timestamp');
   }
-  if(!Number.isFinite(now)||!Number.isInteger(maxAgeMs)||maxAgeMs<0||
+  if(!Number.isSafeInteger(now)||now<0||!Number.isInteger(maxAgeMs)||maxAgeMs<0||
       timestamp>now+5000||now-timestamp>maxAgeMs) {
     throw new ReadOnlyTransportError('Stale or future account snapshot');
   }
