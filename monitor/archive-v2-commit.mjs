@@ -10,7 +10,7 @@ import { verifyPreparedGeneration } from './archive-v2-precommit.mjs';
 // EXPERIMENTAL: local filesystem, cooperating single writer, no external mutations.
 // Rename is atomic on supported same-filesystem targets, but is not a compare-and-swap.
 // A crash after rename and before directory sync leaves durability uncertain.
-export async function commitPreparedGeneration(root,lock,generation,{faultAt=null}={}) {
+export async function commitPreparedGeneration(root,lock,generation,{faultAt=null,onCheckpoint=null}={}) {
   const checkpoint=async name=>{
     if(onCheckpoint) await onCheckpoint(name); // Test-only fault hook; never use in production.
     if(faultAt===name) throw new SegmentManifestError('Injected fault: '+name);
