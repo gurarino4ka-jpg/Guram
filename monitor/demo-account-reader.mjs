@@ -26,7 +26,8 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
           throw new ReadOnlyTransportError('Account response too large');
         }
       }
-      if(response?.headers?.get?.('content-type')?.split(';')[0]?.trim().toLowerCase()!=='application/json') {
+      const contentType=response?.headers?.get?.('content-type');
+      if(typeof contentType!=='string'||!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(contentType)) {
         throw new ReadOnlyTransportError('Account response must be JSON');
       }
     } catch {
