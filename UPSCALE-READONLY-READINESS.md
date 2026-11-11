@@ -2,6 +2,27 @@
 
 **Status: NOT READY — NO-GO.** This is a checklist, not a claim that UpScale's private API, account, or order routes have been inspected. No account credentials or live requests are required or authorized.
 
+## Official UpScale documentation confirmed (November 11, 2026)
+
+- [Upscale Public API](https://docs.upscale.trade/developers) identifies
+  `https://api.upscale.trade` as the API origin, `GET /accounts/with-risk-status`
+  as the account listing endpoint, and `GET /v2/markets?accountId=...` as an
+  account-scoped market lookup. Authentication is Bearer API key.
+- Only accounts with API Trading enabled appear in API-key account lists.
+  The documented API key **inherits the account owner's permissions**.
+  No dedicated read-only key scope is established by these docs. A normal key
+  may also authorize `POST /orders`; obtaining a key is **not** equivalent to
+  enforcing read-only access. Never use order endpoints for this gate.
+- API Trading can be activated on a demo challenge and changes account rules.
+  The platform documents both a 60-second profitable-close adjustment and a
+  30% maximum-profit-day rule, including on manual account operations.
+- The provider-neutral `parseDemoAccountSnapshot` schema is **not** the
+  UpScale API response schema. A documented, reviewed normalization step is
+  still required. Do not claim real account readiness from mock test results.
+- `npm run demo:verify` is an automated five-phase synthetic security gate.
+  `npm run demo:smoke` is a standalone offline fixture, not a provider session.
+  Both are credential-free and submit no orders.
+
 ## Existing verified scope
 
 - The current market monitor supports `mode: "data-only"` only and rejects unknown configuration fields. It collects public BTC/ETH/SOL/ZEC quotes and closed candles; it does **not** log in, read private account balances, submit orders, or run strategies.
