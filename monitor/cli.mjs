@@ -5,14 +5,16 @@ import { loadConfig } from './config.mjs';
 import { createBookflowProvider } from './provider.mjs';
 import { createStore } from './store.mjs';
 import { collectOnce } from './collector.mjs';
+import { createCandleArchive } from './archive-store.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function parseArgs(args) {
-  const result = { once: false, help: false, config: resolve(root, 'monitor.config.json') };
+  const result = { once: false, help: false, archive: false, config: resolve(root, 'monitor.config.json') };
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     if (arg === '--once') result.once = true;
+    else if (arg === '--archive') result.archive = true;
     else if (arg === '--help' || arg === '-h') result.help = true;
     else if (arg === '--config' || arg === '--data-dir') {
       const value = args[++index];
@@ -27,7 +29,7 @@ export async function main(args = process.argv.slice(2)) {
   if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('Для мониторинга нужен Node.js 24 LTS или новее.');
   const options = parseArgs(args);
   if (options.help) {
-    console.log('Локальный сборщик данных: node monitor/cli.mjs [--once] [--config PATH] [--data-dir PATH]\nРежим data-only: котировки, закрытые свечи и журнал. Торговых функций нет.');
+    console.log('Локальный сборщик данных: node monitor/cli.mjs [--once] [--archive] [--config PATH] [--data-dir PATH]\nРежим data-only: котировки, закрытые свечи и журнал. Торговых функций нет.');
     return;
   }
   const config = await loadConfig(options.config, { dataDir: options.dataDir });
@@ -38,14 +40,27 @@ export async function main(args = process.argv.slice(2)) {
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   let lastStatus;
+  let archive = null;
   try {
+    if (options.archive) {
+      archive = await createCandleArchive(config.dataDir);
+      await archive.open();
+    }
     let state = await store.readState();
     const provider = createBookflowProvider({ timeoutMs: config.timeoutSeconds * 1000 });
     console.log(`Сбор данных: ${config.symbols.join(', ')}; таймфреймы ${config.resolutions.join(', ')}; интервал ${config.pollSeconds} с.`);
     console.log(`Журнал и состояние: ${config.dataDir}\nРежим: только данные. Подключения к счёту и торговых заявок нет. Остановка: Ctrl+C.`);
     while (!controller.signal.aborted) {
       const startedAt = Date.now();
-      const result = await collectOnce({ provider, store, config, previousState: state, signal: controller.signal });
+      const result = await collectOnce({ provider, store, config, previousState: state, signal: controller.signal,
+        archive,
+        resolveArchiveMarket: archive ? ({ symbol, resolution }) => ({
+          schemaVersion: 1, provider: 'bookflow', providerSymbol: symbol,
+          providerTicker: `${symbol}/USDT`, displayName: `${symbol}/USD`,
+          exchange: null, marketType: 'unknown', priceBasis: 'unknown',
+          quoteAsset: 'USD', settlementToken: 'USD', resolution,
+        }) : null,
+      });
       state = result.state;
       lastStatus = result.status;
       const prices = lastStatus.quotes.map(quote => `${quote.symbol} ${quote.price.toLocaleString('ru-RU', { maximumFractionDigits: 5 })}${quote.stale ? ' (устарело)' : ''}`).join(' | ');
@@ -61,7 +76,11 @@ export async function main(args = process.argv.slice(2)) {
     } finally {
       process.removeListener('SIGINT', stop);
       process.removeListener('SIGTERM', stop);
-      await store.releaseLock();
+      try {
+        if (archive) await archive.close();
+      } finally {
+        await store.releaseLock();
+      }
     }
   }
 }
