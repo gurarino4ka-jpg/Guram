@@ -52,6 +52,7 @@ export async function createCandleArchive(dataDir) {
   const journal = path.join(root, 'observations.jsonl');
   const lock = path.join(root, 'archive.lock');
   let lockHandle = null;
+  let lockToken = null;
   let state = new Map();
   let batches = new Set();
   let poisoned = false;
@@ -65,6 +66,12 @@ export async function createCandleArchive(dataDir) {
   async function assertOpen() {
     if (!lockHandle) fail('not_open', 'Archive is not open.');
     if (poisoned) fail('write_failed', 'Previous write failed; close and inspect archive.');
+    let actual;
+    try { actual = JSON.parse(await fs.readFile(lock, 'utf8')); }
+    catch (error) { fail('lock_changed', 'Archive lock is missing or invalid.', error); }
+    if (actual.token !== lockToken || actual.pid !== process.pid) {
+      fail('lock_changed', 'Archive lock ownership changed; refusing to write.');
+    }
   }
 
   function applyBatch(entries) {
@@ -127,12 +134,14 @@ export async function createCandleArchive(dataDir) {
         throw error;
       }
       try {
-        await lockHandle.writeFile(JSON.stringify({pid:process.pid,createdAt:new Date().toISOString()})+'\n');
+        lockToken = randomUUID();
+        await lockHandle.writeFile(JSON.stringify({pid:process.pid,token:lockToken,createdAt:new Date().toISOString()})+'\n');
         await lockHandle.sync();
         await load();
       } catch (error) {
         await lockHandle.close().catch(()=>{});
         lockHandle = null;
+        lockToken = null;
         await fs.unlink(lock).catch(()=>{});
         throw error;
       }
@@ -194,8 +203,15 @@ export async function createCandleArchive(dataDir) {
     getRevisions: (identity,openTimeMs) => structuredClone(state.get(createCandleKey(identity,openTimeMs)) ?? []),
     close: () => serial(async () => {
       if (!lockHandle) return;
+      let actual;
+      try { actual = JSON.parse(await fs.readFile(lock, 'utf8')); }
+      catch (error) { fail('lock_changed', 'Archive lock is missing or invalid.', error); }
+      if (actual.token !== lockToken || actual.pid !== process.pid) {
+        fail('lock_changed', 'Archive lock ownership changed; refusing to remove it.');
+      }
       await lockHandle.close();
       lockHandle = null;
+      lockToken = null;
       await fs.unlink(lock);
     }),
   };
