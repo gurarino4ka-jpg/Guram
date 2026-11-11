@@ -126,3 +126,14 @@ test('checkpoint persists across separate store instances after atomic replaceme
     assert.equal(Object.isFrozen(restored),true);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+test('checkpoint store rejects dangling symlinks rather than treating them as missing',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'demo-checkpoint-'));
+  try {
+    const target=join(dir,'checkpoint.json');
+    await symlink(join(dir,'missing.json'),target,'file');
+    const store=createDemoAccountCheckpointStore({filePath:target});
+    await assert.rejects(store.load(),ReadOnlyTransportError);
+    await assert.rejects(store.save(checkpoint),ReadOnlyTransportError);
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
