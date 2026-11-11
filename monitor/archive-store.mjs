@@ -152,6 +152,7 @@ export async function createCandleArchive(dataDir) {
           const current = JSON.parse(await fs.readFile(lock, 'utf8'));
           if (current.token === ownedToken && current.pid === process.pid) {
             await fs.unlink(lock);
+            await syncDirectory(root);
           }
         } catch (cleanupError) {
           if (cleanupError.code !== 'ENOENT') {
@@ -234,6 +235,7 @@ export async function createCandleArchive(dataDir) {
       lockHandle = null;
       lockToken = null;
       await fs.unlink(lock);
+      await syncDirectory(root);
     }),
   };
 }
