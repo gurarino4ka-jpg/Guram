@@ -274,7 +274,7 @@ export async function createCandleArchive(dataDir) {
         }
         // Detect same-size in-place tampering since the last successful replay/append.
         // This is O(journal size) per append; benchmark before production use.
-        const priorData = await handle.readFile('utf8');
+        const priorData = journalIdentity === null ? '' : await handle.readFile('utf8');
         const preWriteStat = await handle.stat();
         if (preWriteStat.size !== openedStat.size ||
             (journalIdentity && sha(priorData) !== journalIdentity.hash)) {
