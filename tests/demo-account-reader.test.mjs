@@ -222,3 +222,32 @@ test('releases reader lock after transport failure',async()=>{
   await assert.rejects(read(),ReadOnlyTransportError);
   assert.equal((await read()).balance,1000);
 });
+
+test('restored checkpoint rejects replay after simulated restart',async()=>{
+  const read1=createDemoAccountReader({transport:async()=>fakeResponse(payload),
+    accountPath:'/account/demo',now:()=>now});
+  assert.equal(read1.getCheckpoint(),null);
+  await read1();
+  const checkpoint=read1.getCheckpoint();
+  assert.deepEqual(checkpoint,{accountId:'demo_123',asOf:payload.asOf});
+  assert.equal(Object.isFrozen(checkpoint),true);
+  const read2=createDemoAccountReader({transport:async()=>fakeResponse(payload),
+    accountPath:'/account/demo',now:()=>now,checkpoint});
+  await assert.rejects(read2(),ReadOnlyTransportError);
+  assert.deepEqual(read2.getCheckpoint(),checkpoint);
+});
+test('restored checkpoint permits newer snapshot for same account',async()=>{
+  const checkpoint={accountId:'demo_123',asOf:payload.asOf};
+  const newer={...payload,asOf:'2026-11-11T05:59:31.000Z'};
+  const read=createDemoAccountReader({transport:async()=>fakeResponse(newer),
+    accountPath:'/account/demo',now:()=>now,checkpoint});
+  assert.equal((await read()).asOf,newer.asOf);
+  assert.deepEqual(read.getCheckpoint(),{accountId:'demo_123',asOf:newer.asOf});
+});
+test('rejects malformed restored checkpoints',()=>{
+  const transport=async()=>fakeResponse(payload);
+  for(const checkpoint of [{},{accountId:'demo_123'}, {accountId:'../live',asOf:payload.asOf},
+    {accountId:'demo_123',asOf:'invalid'}, {accountId:'demo_123',asOf:payload.asOf,extra:true},[]]) {
+    assert.throws(()=>createDemoAccountReader({transport,accountPath:'/account/demo',checkpoint}),ReadOnlyTransportError);
+  }
+});
