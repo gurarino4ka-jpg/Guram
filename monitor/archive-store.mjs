@@ -69,15 +69,29 @@ export async function createCandleArchive(dataDir) {
     return task;
   };
 
+  async function verifyLockOwnership() {
+    if (!lockHandle) fail('not_open', 'Archive is not open.');
+    let actual, heldStat, pathStat;
+    try {
+      [actual, heldStat, pathStat] = await Promise.all([
+        fs.readFile(lock, 'utf8').then(JSON.parse),
+        lockHandle.stat(),
+        fs.lstat(lock),
+      ]);
+    } catch (error) {
+      fail('lock_changed', 'Archive lock is missing or invalid.', error);
+    }
+    if (!pathStat.isFile() || pathStat.isSymbolicLink() ||
+        heldStat.dev !== pathStat.dev || heldStat.ino !== pathStat.ino ||
+        actual.token !== lockToken || actual.pid !== process.pid) {
+      fail('lock_changed', 'Archive lock ownership or file identity changed.');
+    }
+  }
+
   async function assertOpen() {
     if (!lockHandle) fail('not_open', 'Archive is not open.');
     if (poisoned) fail('write_failed', 'Previous write failed; close and inspect archive.');
-    let actual;
-    try { actual = JSON.parse(await fs.readFile(lock, 'utf8')); }
-    catch (error) { fail('lock_changed', 'Archive lock is missing or invalid.', error); }
-    if (actual.token !== lockToken || actual.pid !== process.pid) {
-      fail('lock_changed', 'Archive lock ownership changed; refusing to write.');
-    }
+    await verifyLockOwnership();
   }
 
   function applyBatch(entries) {
@@ -231,12 +245,7 @@ export async function createCandleArchive(dataDir) {
     },
     close: () => serial(async () => {
       if (!lockHandle) return;
-      let actual;
-      try { actual = JSON.parse(await fs.readFile(lock, 'utf8')); }
-      catch (error) { fail('lock_changed', 'Archive lock is missing or invalid.', error); }
-      if (actual.token !== lockToken || actual.pid !== process.pid) {
-        fail('lock_changed', 'Archive lock ownership changed; refusing to remove it.');
-      }
+      await verifyLockOwnership();
       await lockHandle.close();
       lockHandle = null;
       lockToken = null;
