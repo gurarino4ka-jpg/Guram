@@ -209,13 +209,17 @@ export async function createCandleArchive(dataDir) {
       }
     }),
     getCandle: ({identity,openTimeMs,asOf} = {}) => {
+      if (!lockHandle || poisoned) fail('not_ready', 'Archive must be open and healthy before reads.');
       const key = createCandleKey(identity, openTimeMs);
       if (asOf !== undefined && (!Number.isSafeInteger(asOf) || asOf < 0)) fail('invalid_as_of', 'Invalid asOf.');
       const versions = state.get(key) ?? [];
       const result = asOf === undefined ? versions.at(-1) : versions.filter(v => v.knownAtMs <= asOf).at(-1);
       return result ? structuredClone(result) : null;
     },
-    getRevisions: (identity,openTimeMs) => structuredClone(state.get(createCandleKey(identity,openTimeMs)) ?? []),
+    getRevisions: (identity,openTimeMs) => {
+      if (!lockHandle || poisoned) fail('not_ready', 'Archive must be open and healthy before reads.');
+      return structuredClone(state.get(createCandleKey(identity,openTimeMs)) ?? []);
+    },
     close: () => serial(async () => {
       if (!lockHandle) return;
       let actual;
