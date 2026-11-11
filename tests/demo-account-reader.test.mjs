@@ -169,3 +169,28 @@ test('rejects non-JSON and misleading Content-Type parameters',async()=>{
     await assert.rejects(read(),ReadOnlyTransportError,contentType);
   }
 });
+
+test('rejects replayed and regressed account snapshots',async()=>{
+  const snapshots=[
+    {...payload,asOf:'2026-11-11T05:59:30.000Z'},
+    {...payload,asOf:'2026-11-11T05:59:30.000Z'},
+    {...payload,asOf:'2026-11-11T05:59:29.000Z'},
+    {...payload,asOf:'2026-11-11T05:59:31.000Z'},
+  ];
+  const transport=async()=>fakeResponse(snapshots.shift());
+  const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
+  assert.equal((await read()).balance,1000);
+  await assert.rejects(read(),ReadOnlyTransportError);
+  await assert.rejects(read(),ReadOnlyTransportError);
+  assert.equal((await read()).asOf,'2026-11-11T05:59:31.000Z');
+});
+test('pins account identity after first accepted snapshot',async()=>{
+  const snapshots=[
+    {...payload},
+    {...payload,accountId:'demo_other',asOf:'2026-11-11T05:59:31.000Z'},
+  ];
+  const read=createDemoAccountReader({transport:async()=>fakeResponse(snapshots.shift()),
+    accountPath:'/account/demo',now:()=>now});
+  await read();
+  await assert.rejects(read(),ReadOnlyTransportError);
+});
