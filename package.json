@@ -13,6 +13,7 @@
     "check": "node --check server.mjs && node --check public/app.mjs && node --check public/domain.mjs && node --check monitor/cli.mjs && node --check monitor/collector.mjs && node --check monitor/config.mjs && node --check monitor/core.mjs && node --check monitor/provider.mjs && node --check monitor/store.mjs",
     "monitor": "node --use-env-proxy monitor/cli.mjs",
     "monitor:once": "node --use-env-proxy monitor/cli.mjs --once",
-    "test": "node --test"
+    "test": "node --test",
+    "demo:verify": "node scripts/verify-demo-readonly.mjs"
   }
 }
