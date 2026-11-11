@@ -14,7 +14,7 @@ function fakeResponse(data,headers={'content-type':'application/json'}) {
 }
 test('synthetic demo account GET validates full pipeline without mutations',async()=>{
   const requests=[];
-  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async(url,options)=>{
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async(url,options)=>{
     requests.push({url,options});
     return fakeResponse(payload);
   }});
@@ -35,7 +35,7 @@ test('rejects live account, malformed JSON, oversized body and invalid MIME',asy
     fakeResponse(payload,{'content-type':'application/json','content-length':'99999'}),
   ];
   for(const response of cases) {
-    const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>response});
+    const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async()=>response});
     const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now,maxBytes:512});
     await assert.rejects(read(),ReadOnlyTransportError);
   }
@@ -59,7 +59,7 @@ test('rejects truncated Content-Length, broken stream and invalid UTF-8',async()
       body:new ReadableStream({start(controller){controller.enqueue(new Uint8Array([0xff,0xfe]));controller.close();}})},
   ];
   for(const response of cases) {
-    const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async()=>response});
+    const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async()=>response});
     const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
     await assert.rejects(read(),ReadOnlyTransportError);
   }
@@ -67,7 +67,7 @@ test('rejects truncated Content-Length, broken stream and invalid UTF-8',async()
 test('pre-aborted read rejects without producing an accepted account snapshot',async()=>{
   const controller=new AbortController();
   controller.abort();
-  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo','/account?scope=demo'],fetchImpl:async(_url,{signal})=>{
+  const transport=createReadOnlyTransport({origin,allowedPaths:['/account','/account/demo'],fetchImpl:async(_url,{signal})=>{
     if(signal.aborted) throw new Error('secret from provider');
     return fakeResponse(payload);
   }});
