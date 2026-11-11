@@ -1,4 +1,4 @@
-# CandleArchive technical review (CA-01–CA-11)
+# CandleArchive technical review (CA-01–CA-19)
 
 Status: experimental, opt-in, branch-only. Do not merge or use as authoritative historical data until the gates below pass.
 
@@ -48,3 +48,30 @@ The current lock is advisory and not a cross-host distributed lease. A replaceme
 - Matching tokens cannot bypass inode/device verification during the next ownership check.
 - **Merge blocker:** TOCTOU remains between checking the lock and writing the journal. Advisory local locks are not distributed fencing.
 - CI does not establish power-loss consistency or real exchange market provenance.
+
+## CA-19 integration readiness assessment (2026-11-11)
+
+**Decision: NO-GO for production trading or authoritative historical backtesting.** This is a test-only, opt-in archive on a feature branch. CI is a regression signal, not a durability or security certification.
+
+### Verified in automated fixtures
+- Interrupted JSONL tail fails closed; original committed prefix is preserved; offline recovery requires a backup and explicit operator intervention.
+- Concurrent opens yield a single winner under the tested local filesystem conditions.
+- Lost/replaced lock stops subsequent writes; the former owner does not delete the successor's lock.
+- Close after lost ownership releases its own descriptor and disables stale reads.
+- Symlinked journal and regular-file inode replacement are rejected before subsequent append operations.
+
+### Blocking issues, in priority order
+1. **Atomic ownership / TOCTOU:** lock verification and journal append are separate operations. An adversarial or uncoordinated writer can change paths between checks; no OS-level mandatory lock or distributed fencing token exists.
+2. **Crash durability:** no process-kill/power-loss matrix across target operating systems and filesystems; Windows directory fsync is skipped. Offline journal recovery is manual.
+3. **Market provenance:** provider identity, instrument type, quote/settlement assets and price basis require confirmation against authoritative provider metadata; do not infer perpetual-futures equivalence from ticker names.
+4. **End-to-end operations:** add full CLI fixture and sustained workload/soak testing, including bounded historical queries and resource usage.
+5. **Integrity and audit:** checksums are not authenticated against an independent trust anchor; journal rewrite by a privileged actor remains undetectable.
+6. **Read lifecycle:** synchronous in-memory reads do not reverify external lock ownership at each call; consumers must not treat them as a multi-process snapshot guarantee.
+
+### Next implementation gate
+- Agree on single-writer deployment contract and target OS/filesystem before changing lock design.
+- Add deterministic fault injection around open/append/sync/close with preservation-of-evidence assertions.
+- Add full CLI fixture integration and capacity tests.
+- Require independent review and explicit merge approval. Do not merge automatically.
+
+No live market collection, order placement, demo-account changes or backtests were performed in CA-01–CA-19.
