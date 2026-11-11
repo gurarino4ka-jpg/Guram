@@ -37,6 +37,33 @@ test('read-only transport does not retry failed requests or follow redirects',as
     calls++;
     throw new Error('network unavailable');
   }});
-  await assert.rejects(transport('/account'),/network unavailable/);
+  await assert.rejects(transport('/account'),/Read-only request failed/);
+  assert.equal(calls,1);
+});
+
+test('sanitizes secrets in network errors and rejects HTTP failure statuses',async()=>{
+  const secret='token-never-leak';
+  const failed=createReadOnlyTransport({origin,fetchImpl:async()=>{
+    throw new Error('Authorization '+secret);
+  }});
+  await assert.rejects(failed('/account'),error=>{
+    assert.equal(error instanceof ReadOnlyTransportError,true);
+    assert.equal(error.message.includes(secret),false);
+    return true;
+  });
+  for(const [status,fragment] of [[401,'authorization'],[403,'authorization'],[429,'rate limit'],[500,'unsuccessful'],[302,'Redirect']]) {
+    const transport=createReadOnlyTransport({origin,fetchImpl:async()=>({status})});
+    await assert.rejects(transport('/account'),error=>error instanceof ReadOnlyTransportError&&error.message.includes(fragment));
+  }
+});
+test('aborted request fails closed without retry',async()=>{
+  let calls=0;
+  const transport=createReadOnlyTransport({origin,timeoutMs:100,fetchImpl:async(_url,{signal})=>{
+    calls++;
+    return new Promise((_resolve,reject)=>{
+      signal.addEventListener('abort',()=>reject(new Error('private token in abort')), {once:true});
+    });
+  }});
+  await assert.rejects(transport('/account'),/Read-only request aborted/);
   assert.equal(calls,1);
 });
