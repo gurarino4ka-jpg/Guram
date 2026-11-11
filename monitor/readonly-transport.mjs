@@ -50,6 +50,13 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
     if(!headers||typeof headers!=='object'||Array.isArray(headers)) {
       throw new ReadOnlyTransportError('Invalid headers');
     }
+    // Credentials must be handled only by a separately reviewed provider adapter.
+    // Do not allow callers to smuggle cookies, tokens or method overrides.
+    const entries=Object.entries(headers);
+    if(entries.some(([name,value])=>!['accept'].includes(name.toLowerCase())||
+       typeof value!=='string'||value!=='application/json')) {
+      throw new ReadOnlyTransportError('Request headers not allowlisted');
+    }
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),timeoutMs);
     const abort=()=>controller.abort();
