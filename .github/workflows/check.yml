@@ -28,3 +28,22 @@ jobs:
       - run: npm ci --offline --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - run: node --test tests/monitor-core.test.mjs tests/monitor-provider.test.mjs tests/monitor-store.test.mjs tests/monitor-collector.test.mjs
+  archive-benchmark:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/ca-01-candle-schema'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --offline --ignore-scripts --no-audit --no-fund
+      - name: Measure synthetic archive append and replay
+        run: node scripts/benchmark-candle-archive-suite.mjs --output=archive-benchmark.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: archive-benchmark-${{ github.run_id }}
+          path: archive-benchmark.json
+          if-no-files-found: warn
+          retention-days: 14
