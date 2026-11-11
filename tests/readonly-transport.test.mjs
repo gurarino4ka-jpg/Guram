@@ -142,3 +142,17 @@ test('rejects all non-200 success statuses including partial and empty bodies',a
     await assert.rejects(read('/account'),ReadOnlyTransportError,String(status));
   }
 });
+
+test('timeout settles even when fetch ignores its abort signal',async()=>{
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account'],timeoutMs:100,
+    fetchImpl:async()=>new Promise(()=>{})});
+  await assert.rejects(read('/account'),ReadOnlyTransportError);
+});
+test('external abort settles even when fetch ignores its abort signal',async()=>{
+  const controller=new AbortController();
+  const read=createReadOnlyTransport({origin,allowedPaths:['/account'],timeoutMs:1000,
+    fetchImpl:async()=>new Promise(()=>{})});
+  const pending=read('/account',{signal:controller.signal});
+  controller.abort();
+  await assert.rejects(pending,ReadOnlyTransportError);
+});
