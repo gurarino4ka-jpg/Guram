@@ -37,12 +37,26 @@ export function createDemoAccountCheckpointStore({filePath}={}) {
     async load() {
       await rejectUnsafeTarget();
       let content;
-      try { content=await readFile(target,{encoding:'utf8',flag:'r'}); }
-      catch(error) {
+      let handle;
+      try {
+        handle=await open(target,'r');
+        const info=await handle.stat();
+        if(!info.isFile()||info.nlink!==1||info.size>4096) throw new Error('Unsafe checkpoint size');
+        const buffer=Buffer.alloc(4097);
+        let used=0;
+        while(used<buffer.length) {
+          const {bytesRead}=await handle.read(buffer,used,buffer.length-used,used);
+          if(bytesRead===0) break;
+          used+=bytesRead;
+        }
+        if(used>4096) throw new Error('Checkpoint too large');
+        content=new TextDecoder('utf-8',{fatal:true}).decode(buffer.subarray(0,used));
+      } catch(error) {
         if(error?.code==='ENOENT') return null;
         throw new ReadOnlyTransportError('Checkpoint read failed');
+      } finally {
+        if(handle) await handle.close();
       }
-      if(Buffer.byteLength(content,'utf8')>4096) throw new ReadOnlyTransportError('Checkpoint too large');
       try { return validateCheckpoint(JSON.parse(content)); }
       catch { throw new ReadOnlyTransportError('Invalid checkpoint file'); }
     },
