@@ -12,6 +12,7 @@ import { verifyPreparedGeneration } from './archive-v2-precommit.mjs';
 // A crash after rename and before directory sync leaves durability uncertain.
 export async function commitPreparedGeneration(root,lock,generation,{faultAt=null}={}) {
   const checkpoint=async name=>{
+    if(onCheckpoint) await onCheckpoint(name); // Test-only fault hook; never use in production.
     if(faultAt===name) throw new SegmentManifestError('Injected fault: '+name);
   };
   if(typeof root!=='string'||!root.trim()||!lock||typeof lock.assertOwned!=='function') {
