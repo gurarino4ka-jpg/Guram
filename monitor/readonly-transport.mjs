@@ -74,6 +74,12 @@ export function createReadOnlyTransport({origin,fetchImpl=globalThis.fetch,timeo
         throw new ReadOnlyTransportError(controller.signal.aborted?'Read-only request aborted':'Read-only request failed');
       }
       if(controller.signal.aborted) throw new ReadOnlyTransportError('Read-only request aborted');
+      if(response?.redirected===true) {
+        throw new ReadOnlyTransportError('Redirect forbidden');
+      }
+      if(typeof response?.url==='string'&&response.url.length>0&&response.url!==url.href) {
+        throw new ReadOnlyTransportError('Unexpected response URL');
+      }
       if(!response||!Number.isInteger(response.status)||response.status<100||response.status>599) {
         throw new ReadOnlyTransportError('Invalid response');
       }
