@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { validateUdfHistory, planClosedCandleUpdate } from './core.mjs';
+import { buildArchiveObservation } from './archive-adapter.mjs';
 
 function validateState(state) {
   if (state === null) return { version: 1, streams: {}, healthSignature: null };
@@ -9,7 +10,10 @@ function validateState(state) {
 }
 
 /** Collect public data only. There is no account connection, signal engine or order operation. */
-export async function collectOnce({ provider, store, config, previousState = null, now = Date.now, signal } = {}) {
+export async function collectOnce({ provider, store, config, previousState = null, now = Date.now, signal, archive = null, resolveArchiveMarket = null } = {}) {
+  if (archive !== null && (typeof archive.appendObservation !== 'function' || typeof resolveArchiveMarket !== 'function')) {
+    throw new TypeError('Archive requires appendObservation and resolveArchiveMarket.');
+  }
   const startedAtMs = now();
   const state = validateState(previousState);
   const issues = [], streams = [], events = [];
@@ -42,6 +46,14 @@ export async function collectOnce({ provider, store, config, previousState = nul
       } catch (error) { sourceError(key, error); continue; }
       // Disk failures propagate and stop the process; they are not labelled as network failures.
       try {
+        if (archive !== null) {
+          const market = await resolveArchiveMarket({ symbol, resolution, result, validation });
+          const observation = buildArchiveObservation({
+            market, validation, receivedAtMs: result.receivedAtMs,
+            snapshotTimeMs: result.snapshotTimeMs ?? result.receivedAtMs,
+          });
+          await archive.appendObservation(observation);
+        }
         await store.writeSnapshot(symbol, resolution, { receivedAt: new Date(result.receivedAtMs).toISOString(), snapshotTime: new Date(result.snapshotTimeMs ?? result.receivedAtMs).toISOString(), source: result.sourceUrl, symbol, resolution, ...validation });
       } catch (error) { storageFailure = error; throw error; }
       if (validation.stale) issues.push({ stream: key, code: 'stale_candles' });
