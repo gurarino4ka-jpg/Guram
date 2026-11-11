@@ -194,3 +194,31 @@ test('pins account identity after first accepted snapshot',async()=>{
   await read();
   await assert.rejects(read(),ReadOnlyTransportError);
 });
+
+test('rejects concurrent reads and releases lock after completion',async()=>{
+  let finish;
+  let calls=0;
+  const transport=async()=>{
+    calls++;
+    if(calls===1) await new Promise(resolve=>{finish=resolve;});
+    return fakeResponse({...payload,asOf:calls===1?'2026-11-11T05:59:30.000Z':'2026-11-11T05:59:31.000Z'});
+  };
+  const read=createDemoAccountReader({transport,accountPath:'/account/demo',now:()=>now});
+  const first=read();
+  await assert.rejects(read(),ReadOnlyTransportError);
+  assert.equal(calls,1);
+  finish();
+  assert.equal((await first).balance,1000);
+  assert.equal((await read()).asOf,'2026-11-11T05:59:31.000Z');
+  assert.equal(calls,2);
+});
+test('releases reader lock after transport failure',async()=>{
+  let calls=0;
+  const read=createDemoAccountReader({transport:async()=>{
+    calls++;
+    if(calls===1) throw new Error('provider failure');
+    return fakeResponse(payload);
+  },accountPath:'/account/demo',now:()=>now});
+  await assert.rejects(read(),ReadOnlyTransportError);
+  assert.equal((await read()).balance,1000);
+});
