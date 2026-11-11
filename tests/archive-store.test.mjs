@@ -120,3 +120,52 @@ test('tampered observation time is rejected even if batch checksum is recalculat
     await assert.rejects(second.open(),e=>e instanceof ArchiveStoreError&&e.code==='corrupt_journal');
   });
 });
+
+test('complete committed batch survives restart and retry without extra revision',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    await first.close();
+    const restarted=await createCandleArchive(dir);
+    await restarted.open();
+    assert.deepEqual(await restarted.appendObservation({market,candles:[candle]}),
+      {newCandles:0,revisions:0,unchanged:1});
+    assert.equal(restarted.getRevisions(market,candle.openTimeMs).length,1);
+    await restarted.close();
+  });
+});
+test('partial second batch blocks replay while preserving committed first batch on disk',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    await first.close();
+    const file=path.join(dir,'archive','v1','observations.jsonl');
+    const committed=await fs.readFile(file,'utf8');
+    await fs.appendFile(file,'{"version":1,"id":"unfinished"');
+    const restarted=await createCandleArchive(dir);
+    await assert.rejects(restarted.open(),e=>e instanceof ArchiveStoreError&&e.code==='corrupt_journal');
+    assert.equal(await fs.readFile(file,'utf8'),committed+'{"version":1,"id":"unfinished"');
+  });
+});
+test('sequential revisions survive multiple committed batches and PIT replay',async()=>{
+  await fixture(async dir=>{
+    const first=await createCandleArchive(dir);
+    await first.open();
+    await first.appendObservation({market,candles:[candle]});
+    await first.appendObservation({market,candles:[{
+      ...candle,close:106,receivedAtMs:7_300_000,knownAtMs:7_300_000,
+    }]});
+    await first.appendObservation({market,candles:[{
+      ...candle,close:105,receivedAtMs:7_400_000,knownAtMs:7_400_000,
+    }]});
+    await first.close();
+    const restarted=await createCandleArchive(dir);
+    await restarted.open();
+    assert.deepEqual(restarted.getRevisions(market,candle.openTimeMs).map(x=>x.revision),[1,2,3]);
+    assert.equal(restarted.getCandle({identity:market,openTimeMs:candle.openTimeMs,asOf:7_350_000}).candle.close,106);
+    assert.equal(restarted.getCandle({identity:market,openTimeMs:candle.openTimeMs,asOf:7_450_000}).candle.close,105);
+    await restarted.close();
+  });
+});
