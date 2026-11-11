@@ -13,6 +13,8 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
      !Number.isInteger(bodyTimeoutMs)||bodyTimeoutMs<100||bodyTimeoutMs>30000) {
     throw new ReadOnlyTransportError('Invalid reader configuration');
   }
+  let lastAcceptedTimestamp=-Infinity;
+  let pinnedAccountId=null;
   return async function readDemoAccount({signal}={}) {
     let response;
     try { response=await transport(accountPath,{method:'GET',signal}); }
@@ -83,7 +85,18 @@ export function createDemoAccountReader({transport,accountPath,now=()=>Date.now(
     let payload;
     try { payload=JSON.parse(raw); }
     catch { throw new ReadOnlyTransportError('Invalid account JSON'); }
-    try { return parseDemoAccountSnapshot(payload,{now:now()}); }
+    let snapshot;
+    try { snapshot=parseDemoAccountSnapshot(payload,{now:now()}); }
     catch { throw new ReadOnlyTransportError('Invalid demo account snapshot'); }
+    const timestamp=Date.parse(snapshot.asOf);
+    if(timestamp<=lastAcceptedTimestamp) {
+      throw new ReadOnlyTransportError('Non-increasing account snapshot timestamp');
+    }
+    if(pinnedAccountId!==null&&snapshot.accountId!==pinnedAccountId) {
+      throw new ReadOnlyTransportError('Unexpected demo account identity');
+    }
+    pinnedAccountId=snapshot.accountId;
+    lastAcceptedTimestamp=timestamp;
+    return snapshot;
   };
 }
